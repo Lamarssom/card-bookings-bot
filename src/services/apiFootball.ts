@@ -68,7 +68,7 @@ export async function fetchAndSaveRecentCards(
 
       const fixturesRes = await axios.get(url, {
         headers: { 'x-apisports-key': config.apiKey },
-        timeout: 120000, // 120 seconds
+        timeout: 180000, // 120 seconds
       });
 
       const fixtures = fixturesRes.data.response || [];
@@ -87,7 +87,7 @@ export async function fetchAndSaveRecentCards(
             `https://v3.football.api-sports.io/fixtures/events?fixture=${fixtureId}&type=Card`,
             {
               headers: { 'x-apisports-key': config.apiKey },
-              timeout: 120000,
+              timeout: 180000,
             }
           );
 

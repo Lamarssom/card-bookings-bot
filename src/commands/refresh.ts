@@ -26,15 +26,16 @@ export default function registerRefresh(bot: any) {
       const messageText = ctx.message && 'text' in ctx.message ? ctx.message.text : undefined;
       const args = messageText?.split(' ').slice(1).join(' ').toLowerCase().trim() || '';
 
-      if (args && MONTH_RANGES[args]) {
-        const range = MONTH_RANGES[args];
-        fromDate = range.from;
-        toDate = range.to;
-        await ctx.reply(`Using range: ${args.toUpperCase()} (${fromDate} to ${toDate})`);
-      } else if (args) {
-        await ctx.reply(`Unknown range "${args}". Use e.g. /refresh aug, /refresh sep, ... or just /refresh for full season (limited by free tier).`);
+      if (!args || !MONTH_RANGES[args]) {
+        const months = Object.keys(MONTH_RANGES).join(', ');
+        await ctx.reply(
+          `Please specify a month.\n` +
+          `Supported: ${months}\n\n` +
+          `Example: /refresh aug   or   /refresh-aug`
+        );
         return;
-      } else {
+      }
+       else {
         await ctx.reply('No month specified → attempting full 2024/25 season (will be partial due to free tier 100 req/day limit)');
       }
 
@@ -50,5 +51,21 @@ export default function registerRefresh(bot: any) {
       console.error('Refresh error:', err);
       await ctx.reply('Refresh failed: ' + (err.message || 'Unknown error'));
     }
+  });
+  // Month-specific shortcuts: /refresh-aug, /refresh-sep, etc.
+  Object.keys(MONTH_RANGES).forEach(month => {
+    bot.command(`refresh-${month}`, async (ctx: Context) => {
+      const range = MONTH_RANGES[month];
+      await ctx.reply(`Refreshing ${month.toUpperCase()} (${range.from} → ${range.to})...`);
+
+      try {
+        const result = await fetchAndSaveRecentCards(2024, range.from, range.to);
+        await ctx.reply(
+          `Done!\nFetched ${result.fetched} matches\nSaved/updated ${result.saved} cards`
+        );
+      } catch (err: any) {
+        await ctx.reply('Failed: ' + (err.message || 'Unknown error'));
+      }
+    });
   });
 }
