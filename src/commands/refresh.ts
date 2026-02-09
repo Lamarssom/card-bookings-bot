@@ -1,5 +1,6 @@
 import { Context } from 'telegraf';
 import { fetchAndSaveRecentCards } from '../services/apiFootball';
+import { config } from '../config';
 
 const MONTH_RANGES: Record<string, { from: string; to: string }> = {
   aug:    { from: '2024-08-01', to: '2024-08-31' },
@@ -52,18 +53,51 @@ export default function registerRefresh(bot: any) {
       await ctx.reply('Refresh failed: ' + (err.message || 'Unknown error'));
     }
   });
-  // Month-specific shortcuts: /refresh-aug, /refresh-sep, etc.
+  // Month-specific + optional league shortcuts: /refresh-aug, /refresh-aug laliga, /refresh-sep seriea, etc.
   Object.keys(MONTH_RANGES).forEach(month => {
     bot.command(`refresh-${month}`, async (ctx: Context) => {
+      const messageText = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
+      const parts = messageText.split(' ').slice(1); // after /refresh-aug
+      const leagueArg = parts.length > 0 ? parts[0].toLowerCase() : null;
+
+      let targetLeagues = config.leagues;
+
+      if (leagueArg) {
+        const found = config.leagues.find(l => 
+          l.name.toLowerCase().includes(leagueArg) || 
+          String(l.id).includes(leagueArg)
+        );
+        if (!found) {
+          await ctx.reply(`Unknown league "${leagueArg}". Try: premier, laliga, seriea, bundesliga, ligue1`);
+          return;
+        }
+        targetLeagues = [found];
+        await ctx.reply(`Limiting refresh to: ${found.name}`);
+      } else {
+        await ctx.reply(`Refreshing ALL leagues for ${month.toUpperCase()}`);
+      }
+
       const range = MONTH_RANGES[month];
-      await ctx.reply(`Refreshing ${month.toUpperCase()} (${range.from} → ${range.to})...`);
+      await ctx.reply(`Starting: ${month.toUpperCase()} (${range.from} → ${range.to})...`);
+
+      const originalLeagues = config.leagues;
 
       try {
+        // Temporary override for this run
+        const originalLeagues = config.leagues;
+        config.leagues = targetLeagues;
+
         const result = await fetchAndSaveRecentCards(2024, range.from, range.to);
+
+        config.leagues = originalLeagues; // restore
+
         await ctx.reply(
-          `Done!\nFetched ${result.fetched} matches\nSaved/updated ${result.saved} cards`
+          `Done!\n` +
+          `Fetched ${result.fetched} matches\n` +
+          `Saved/updated ${result.saved} cards`
         );
       } catch (err: any) {
+        config.leagues = originalLeagues; // restore on error too
         await ctx.reply('Failed: ' + (err.message || 'Unknown error'));
       }
     });
