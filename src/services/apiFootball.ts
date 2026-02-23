@@ -52,8 +52,8 @@ export async function saveCardsFromFixture(fixture: any, events: any[]) {
 
 export async function fetchAndSaveRecentCards(
   season = 2024,
-  fromDate?: string,   // e.g. "2024-08-01"
-  toDate?: string      // e.g. "2024-10-31"
+  fromDate?: string,  
+  toDate?: string
 ) {
   let totalFetched = 0;
   let totalSaved = 0;
@@ -105,11 +105,13 @@ export async function fetchAndSaveRecentCards(
           }
         }
 
-        // Safe delay between fixture requests (8s → ~7–8 requests/min)
-        await new Promise(r => setTimeout(r, 8000));
       }
     } catch (err: any) {
       console.error(`League ${league.name} failed:`, err.message || err);
+      if (err.response?.status === 429 || err.code === 'ECONNABORTED' || err.message?.includes('rate')) {
+        console.log('Rate limit hit → sleeping 30s...');
+        await new Promise(r => setTimeout(r, 30000));
+      }
     }
   }
 
