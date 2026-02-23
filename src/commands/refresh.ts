@@ -58,18 +58,50 @@ export default function registerRefresh(bot: any) {
     let targetLeagues = [...config.leagues]; // copy
 
     if (leagueArg) {
-      const found = config.leagues.find(l =>
-        l.name.toLowerCase().includes(leagueArg!) ||
-        String(l.id).includes(leagueArg!)
-      );
-      if (!found) {
-        await ctx.reply(`❌ Unknown league "${leagueArg}". Try: premier, laliga, seriea, bundesliga, ligue1`);
-        return;
+      const input = leagueArg.toLowerCase().trim().replace(/\s+/g, '');
+
+      const leagueMap: Record<string, number> = {
+        pl: 39,
+        epl: 39,
+        'premierleague': 39,
+
+        laliga: 140,
+        'la liga': 140,
+
+        seriea: 135,
+        'serie a': 135,
+
+        bundesliga: 78,
+
+        ligue1: 61,
+        'ligue 1': 61,
+      };
+
+      const matchedId = leagueMap[input];
+
+      if (matchedId) {
+        const found = config.leagues.find(l => l.id === matchedId);
+        if (found) {
+          targetLeagues = [found];
+          await ctx.reply(`🔍 Limiting to: ${found.name}`);
+        } else {
+          await ctx.reply(`League ID ${matchedId} not found in your config.`);
+          return;
+        }
+      } else {
+        // Fallback to original includes logic if no map hit
+        const found = config.leagues.find(l =>
+          l.name.toLowerCase().includes(input) ||
+          String(l.id).includes(input)
+        );
+        if (found) {
+          targetLeagues = [found];
+          await ctx.reply(`🔍 Limiting to: ${found.name}`);
+        } else {
+          await ctx.reply(`❌ Unknown league "${leagueArg}". Try: premier, laliga, seriea, bundesliga, ligue1`);
+          return;
+        }
       }
-      targetLeagues = [found];
-      await ctx.reply(`🔍 Limiting to: ${found.name}`);
-    } else {
-      await ctx.reply(`🌍 Refreshing ALL leagues for ${month.toUpperCase()}`);
     }
 
     await ctx.reply(`🚀 Starting ${month.toUpperCase()} (${range.from} → ${range.to})...\nThis may take 5–10 minutes due to API limits.`);
