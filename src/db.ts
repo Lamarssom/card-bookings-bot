@@ -11,6 +11,8 @@ export async function connectDB() {
     console.log('MongoDB connected successfully! 📦');
   } catch (err) {
     console.error('MongoDB connection error:', err);
+    await Card.createIndexes();
+    console.log('Indexes ensured/created.');
     process.exit(1);
   }
 }
