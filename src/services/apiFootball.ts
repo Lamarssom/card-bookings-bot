@@ -11,6 +11,31 @@ export async function saveCardsFromFixture(fixture: any, events: any[]) {
   for (const event of events) {
     if (event.type !== 'Card') continue;
 
+    let matchday = 0;
+
+    if (fixture.league.round) {
+      const roundValue = fixture.league.round.toString().trim();
+      const parts = roundValue.split(' - ');
+      if (parts.length > 1) {
+        matchday = parseInt(parts[1], 10) || 0;
+      }
+      else if (/^\d+$/.test(roundValue)) {
+        matchday = parseInt(roundValue, 10);
+      }
+      else {
+        const numMatch = roundValue.match(/\d+/);
+        if (numMatch) {
+          matchday = parseInt(numMatch[0], 10);
+        }
+      }
+    }
+    if (matchday === 0 && fixture.league.round) {
+      console.warn(
+        `Could not parse matchday from round: "${fixture.league.round}" ` +
+        `(fixture ${fixture.fixture.id} - ${matchStr})`
+      );
+    }
+
     const cardData = {
       fixtureId: fixture.fixture.id,
       match: matchStr,
@@ -24,7 +49,7 @@ export async function saveCardsFromFixture(fixture: any, events: any[]) {
       cardType: event.detail,
       minute: event.time.elapsed,
       extra: event.time.extra,
-      matchday: parseInt(fixture.league.round?.split(' - ')[1] || '0') || 0,
+      matchday: matchday,
     };
 
     try {
@@ -108,8 +133,11 @@ export async function fetchAndSaveRecentCards(
       }
     } catch (err: any) {
       console.error(`League ${league.name} failed:`, err.message || err);
-      if (err.response?.status === 429 || err.code === 'ECONNABORTED' || err.message?.includes('rate')) {
-        console.log('Rate limit hit → sleeping 30s...');
+      if (err.response?.status === 429 || err.message?.includes('rate limit') || err.message?.includes('429')) {
+        console.log('API rate limit hit (likely 100/day free tier) → sleeping 60s...');
+        await new Promise(r => setTimeout(r, 60000));
+      } else if (err.code === 'ECONNABORTED') {
+        console.log('Request timeout → sleeping 30s...');
         await new Promise(r => setTimeout(r, 30000));
       }
     }
