@@ -7,6 +7,7 @@ import { Card } from './db';
 import type { BotContext, BotSession } from './types';
 
 // Command registrars
+import registerPredict from './commands/predict';
 import registerRefresh from './commands/refresh';
 import registerRecentCards from './commands/recentcards';
 // import registerTestApf from './commands/testapf'; // uncomment if needed
@@ -51,6 +52,7 @@ bot.command('ping', (ctx) => ctx.reply('Pong!'));
 
 registerRefresh(bot);
 registerRecentCards(bot);
+registerPredict(bot);
 // registerTestApf(bot); // keep commented unless needed
 
 bot.command('teamcards', (ctx) => {
