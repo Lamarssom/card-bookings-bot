@@ -1,7 +1,7 @@
 // src/commands/predict.ts
 import { Context } from 'telegraf';
 import { findTeamByName, getTeamIdFromName } from '../services/teamLookup';
-import { getNextFixtureFootballData } from '../services/footballDataOrg';
+import { getNextFixtureForTeam } from '../services/apiFootball';
 import { escapeMarkdownV2 } from '../utils';
 
 export default function registerPredict(bot: any) {
@@ -54,7 +54,7 @@ export default function registerPredict(bot: any) {
       }
 
       // 3. Get next fixture
-      const nextFixture = await getNextFixtureFootballData(teamId);
+      const nextFixture = await getNextFixtureForTeam(teamId);
 
       if (!nextFixture) {
         await ctx.reply(
@@ -64,15 +64,12 @@ export default function registerPredict(bot: any) {
         return;
       }
 
-      const fixture = nextFixture;
-      const home = fixture.homeTeam.name;
-      const away = fixture.$awayTeam.name;
-      const isHome = fixture.homeTeam.id === teamId;
+      // 4. Basic placeholder reply (we'll expand this later)
+      const opponent = nextFixture.teams.home.id === teamId
+        ? nextFixture.teams.away.name
+        : nextFixture.teams.home.name;
 
-      const opponent = isHome ? away : home;
-      const myTeamDisplay = isHome ? home : away;
-
-      const fixtureDate = new Date(nextFixture.utcDate).toLocaleString('en-GB', {
+      const fixtureDate = new Date(nextFixture.fixture.date).toLocaleString('en-GB', {
         weekday: 'long',
         day: 'numeric',
         month: 'long',
@@ -82,14 +79,12 @@ export default function registerPredict(bot: any) {
         timeZoneName: 'short'
       });
 
-      const leagueName = fixture.competition.name;
-
       const reply = `
-    *Card Booking Prediction* – ${escapeMarkdownV2(myTeamDisplay)}
+    *Card Booking Prediction* – ${escapeMarkdownV2(teamName)}
 
 Next Fixture  
-${escapeMarkdownV2(myTeamDisplay)} vs ${escapeMarkdownV2(opponent)}  
-${escapeMarkdownV2(leagueName)} • ${fixtureDate}
+${escapeMarkdownV2(teamName)} vs ${escapeMarkdownV2(opponent)}  
+${escapeMarkdownV2(nextFixture.league.name)} • ${fixtureDate}
 
 *Historical data & prediction coming soon...*  
 (We're still building the stats engine 🚧)

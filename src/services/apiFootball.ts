@@ -151,3 +151,45 @@ export async function fetchAndSaveRecentCards(
 
   return { fetched: totalFetched, saved: totalSaved };
 }
+
+export async function getNextFixtureForTeam(teamId: number): Promise<any | null> {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const future = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    console.log(`[API-Football] Looking for upcoming fixtures for team ${teamId} (${today} → ${future})`);
+
+    const res = await axios.get('https://v3.football.api-sports.io/fixtures', {
+      params: {
+        team: teamId,
+        from: today,
+        to: future,
+        timezone: 'UTC'
+      },
+      headers: { 'x-apisports-key': config.apiKey },
+      timeout: 15000
+    });
+
+    let fixtures = res.data.response || [];
+
+    if (fixtures.length === 0) {
+      console.log('No upcoming fixtures found in next 14 days (free tier limitation)');
+      return null;
+    }
+
+    // Sort by date (soonest first)
+    fixtures.sort((a: any, b: any) => 
+      new Date(a.fixture.date).getTime() - new Date(b.fixture.date).getTime()
+    );
+
+    console.log(`Found ${fixtures.length} upcoming fixture(s) — using the soonest one`);
+    return fixtures[0];
+
+  } catch (err: any) {
+    console.error('API-Football upcoming fixture error:', err.message || err);
+    if (err.response?.status === 429) {
+      console.log('Rate limit hit — try again in a minute');
+    }
+    return null;
+  }
+}
