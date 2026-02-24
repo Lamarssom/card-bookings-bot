@@ -1,6 +1,6 @@
 // src/commands/predict.ts
 import { Context } from 'telegraf';
-import { findTeamByName, getTeamIdFromName } from '../services/teamLookup';
+import { findTeamByName } from '../services/teamLookup';
 import { getTeamIdTheSportsDB, getNextFixtureTheSportsDB } from '../services/theSportsDB';
 import { escapeMarkdownV2 } from '../utils';
 
@@ -24,89 +24,89 @@ export default function registerPredict(bot: any) {
 
       await ctx.reply('🔍 Looking up team and next match...');
 
-      // 2. Try to find the team in our database (fuzzy search)
+      // 2. Resolve display name and search name
+      let displayName = args; // what shows in reply
+      let searchName = args;  // what we search TheSportsDB with
+
+      // Prefer DB match for cleaner name if available
       const teamInfo = await findTeamByName(args);
-
-      let teamName: string;
-      let teamId: number | null = null;
-
       if (teamInfo) {
-        teamName = teamInfo.name;
-        teamId = await getTeamIdFromName(teamName);
-      } else {
-        teamId = await getTeamIdFromName(args);
-        if (!teamId) {
-          await ctx.reply(
-            `Could not find team "${args}".\n` +
-            'Try a different spelling or a well-known team name.'
-          );
-          return;
-        }
-        teamName = args; // use input as fallback
+        displayName = teamInfo.name;
+        searchName = teamInfo.name; // DB names are often more accurate
       }
 
-      teamId = await getTeamIdTheSportsDB(teamName)
+      // 3. Get team ID from TheSportsDB
+      let teamId: number | null = await getTeamIdTheSportsDB(searchName);
+
+      // Fallback: try original user input if DB name failed
       if (!teamId) {
-        await ctx.reply('Could not resolve team ID. Try again or check spelling.');
-        return;
+        teamId = await getTeamIdTheSportsDB(args);
       }
 
-      // 3. Get next fixture
-      const nextFixture = await getNextFixtureTheSportsDB(teamId);
-
-      if (!nextFixture) {
+      if (!teamId) {
         await ctx.reply(
-          `No upcoming fixture found for ${teamName}.\n` +
-          'The season might be over, or data not available yet.'
+          `Could not find "${args}" on sports database.\n` +
+          'Try exact spelling (e.g. "Man United", "Barcelona", "Man City").'
         );
         return;
       }
 
-      // After getting nextFixture
+      // 4. Get next fixture
+      const nextFixture = await getNextFixtureTheSportsDB(teamId);
 
-        const opponent = nextFixture.strHomeTeam === teamName
+      if (!nextFixture) {
+        await ctx.reply(
+          `No upcoming fixture found for ${escapeMarkdownV2(displayName)}.\n` +
+          'Season might be paused or no data available yet.'
+        );
+        return;
+      }
+
+      // 5. Format opponent and date safely
+      const opponent = nextFixture.strHomeTeam === displayName
         ? nextFixture.strAwayTeam
         : nextFixture.strHomeTeam;
 
-        let fixtureDateStr = 'Date/time not available';
+      let fixtureDateStr = 'Date/time not available';
 
-        if (nextFixture.dateEvent && nextFixture.strTime) {
+      if (nextFixture.dateEvent && nextFixture.strTime) {
         try {
-            const [year, month, day] = nextFixture.dateEvent.split('-');
-            const [hour, min] = nextFixture.strTime.split(':').map((s: string) => s.padStart(2, '0'));
+          const [year, month, day] = nextFixture.dateEvent.split('-');
+          const [hour, min] = nextFixture.strTime.split(':').map((s: string) => s.padStart(2, '0'));
 
-            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const monthName = monthNames[parseInt(month, 10) - 1] || month;
+          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          const monthName = monthNames[parseInt(month, 10) - 1] || month;
 
-            fixtureDateStr = `${day} ${monthName} ${year} ${hour}:${min} UTC`;
+          fixtureDateStr = `${day} ${monthName} ${year} ${hour}:${min} UTC`;
         } catch (e) {
-            console.warn('Date parse failed:', e);
-            fixtureDateStr = `${nextFixture.dateEvent || 'Unknown'} ${nextFixture.strTime || ''}`;
+          console.warn('Date parse failed:', e);
+          fixtureDateStr = `${nextFixture.dateEvent || 'Unknown'} ${nextFixture.strTime || ''}`;
         }
-        }
+      }
 
-        const leagueName = nextFixture.strLeague || 'Unknown League';
+      const leagueName = nextFixture.strLeague || 'Unknown League';
 
-        // Escape each part individually (safe and controlled)
-        const safeTeam = escapeMarkdownV2(teamName);
-        const safeOpponent = escapeMarkdownV2(opponent);
-        const safeLeague = escapeMarkdownV2(leagueName);
-        const safeDate = escapeMarkdownV2(fixtureDateStr);
+      // Escape each dynamic part
+      const safeTeam = escapeMarkdownV2(displayName);
+      const safeOpponent = escapeMarkdownV2(opponent);
+      const safeLeague = escapeMarkdownV2(leagueName);
+      const safeDate = escapeMarkdownV2(fixtureDateStr);
 
-        // Build the reply WITHOUT extra indentation or risky characters
-        const reply = `*Card Booking Prediction* – ${safeTeam}
+      // Build reply (no indentation issues, all escaped)
+      const reply = `*Card Booking Prediction* – ${safeTeam}
 
-        Next Fixture  
-        ${safeTeam} vs ${safeOpponent}  
-        ${safeLeague} • ${safeDate}
+Next Fixture  
+${safeTeam} vs ${safeOpponent}  
+${safeLeague} • ${safeDate}
 
-        *Historical data & prediction coming soon...*  
-        \\(We're still building the stats engine 🚧\\)`.trim();
+*Historical data & prediction coming soon...*  
+\\(We're still building the stats engine 🚧\\)`.trim();
 
-        // Debug: log exactly what we're sending
-        console.log('Final MarkdownV2 text to send:\n' + reply);
+      // Debug log
+      console.log('Final MarkdownV2 reply:\n' + reply);
 
-        await ctx.replyWithMarkdownV2(reply);
+      await ctx.replyWithMarkdownV2(reply);
+
     } catch (err: any) {
       console.error('Predict command error:', err);
       await ctx.reply('Sorry, something went wrong while fetching prediction. Try again later.');
