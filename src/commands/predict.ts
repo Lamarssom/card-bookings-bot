@@ -62,49 +62,51 @@ export default function registerPredict(bot: any) {
         return;
       }
 
-        // 4. Format safely
+      // After getting nextFixture
+
         const opponent = nextFixture.strHomeTeam === teamName
-          ? nextFixture.strAwayTeam
-          : nextFixture.strHomeTeam;
+        ? nextFixture.strAwayTeam
+        : nextFixture.strHomeTeam;
 
-        const dateStr = nextFixture.dateEvent || '';
-        const timeStr = nextFixture.strTime || 'Unknown time';
+        let fixtureDateStr = 'Date/time not available';
 
-        let fixtureDate = 'Date not available';
-        if (dateStr && timeStr) {
-            try {
-                const fullDateTime = `${dateStr}T${timeStr}Z`;
-                const dateObj = new Date(fullDateTime);
-                if (!isNaN(dateObj.getTime())) {
-                    fixtureDate = dateObj.toLocaleString('en-GB', {
-                        weekday: 'long',
-                        day: 'numeric',
-                        month: 'long',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        timeZoneName: 'short'
-                    });
-                }
-            } catch (e) {
-              console.warn('Date parse failed:', e);
-            }
+        if (nextFixture.dateEvent && nextFixture.strTime) {
+        try {
+            const [year, month, day] = nextFixture.dateEvent.split('-');
+            const [hour, min] = nextFixture.strTime.split(':').map((s: string) => s.padStart(2, '0'));
+
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const monthName = monthNames[parseInt(month, 10) - 1] || month;
+
+            fixtureDateStr = `${day} ${monthName} ${year} ${hour}:${min} UTC`;
+        } catch (e) {
+            console.warn('Date parse failed:', e);
+            fixtureDateStr = `${nextFixture.dateEvent || 'Unknown'} ${nextFixture.strTime || ''}`;
+        }
         }
 
         const leagueName = nextFixture.strLeague || 'Unknown League';
 
-        const reply = `
-        *Card Booking Prediction* – ${escapeMarkdownV2(teamName)}
+        // Escape each part individually (safe and controlled)
+        const safeTeam = escapeMarkdownV2(teamName);
+        const safeOpponent = escapeMarkdownV2(opponent);
+        const safeLeague = escapeMarkdownV2(leagueName);
+        const safeDate = escapeMarkdownV2(fixtureDateStr);
+
+        // Build the reply WITHOUT extra indentation or risky characters
+        const reply = `*Card Booking Prediction* – ${safeTeam}
 
         Next Fixture  
-        ${escapeMarkdownV2(teamName)} vs ${escapeMarkdownV2(opponent)}  
-        ${escapeMarkdownV2(leagueName)} • ${escapeMarkdownV2(fixtureDate)}
+        ${safeTeam} vs ${safeOpponent}  
+        ${safeLeague} • ${safeDate}
 
         *Historical data & prediction coming soon...*  
-        \\(We're still building the stats engine 🚧\\)
-        `.trim();
+        \\(We're still building the stats engine 🚧\\)`.trim();
 
-      await ctx.replyWithMarkdownV2(reply);
+        // Debug: log exactly what we're sending
+        console.log('Final MarkdownV2 text to send:\n' + reply);
+
+        await ctx.replyWithMarkdownV2(reply);
     } catch (err: any) {
       console.error('Predict command error:', err);
       await ctx.reply('Sorry, something went wrong while fetching prediction. Try again later.');
