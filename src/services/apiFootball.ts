@@ -151,26 +151,3 @@ export async function fetchAndSaveRecentCards(
 
   return { fetched: totalFetched, saved: totalSaved };
 }
-
-export async function getNextFixtureForTeam(teamId: number): Promise<any | null> {
-  try {
-    const res = await axios.get('https://v3.football.api-sports.io/fixtures', {
-      params: {
-        team: teamId,
-        next: 1,
-        timezone: 'UTC'
-      },
-      headers: { 'x-apisports-key': config.apiKey },
-      timeout: 10000
-    });
-
-    const fixtures = res.data.response || [];
-    return fixtures.length > 0 ? fixtures[0] : null;
-  } catch (err: any) {
-    console.error('Next fixture error:', err.message);
-    if (err.response?.status === 429) {
-      console.log('Rate limit - next fixture skipped');
-    }
-    return null;
-  }
-}
