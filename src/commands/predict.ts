@@ -1,7 +1,7 @@
 // src/commands/predict.ts
 import { Context } from 'telegraf';
 import { findTeamByName, getTeamIdFromName } from '../services/teamLookup';
-import { getNextFixtureForTeam } from '../services/apiFootball';
+import { getTeamIdTheSportsDB, getNextFixtureTheSportsDB } from '../services/theSportsDB';
 import { escapeMarkdownV2 } from '../utils';
 
 export default function registerPredict(bot: any) {
@@ -32,11 +32,8 @@ export default function registerPredict(bot: any) {
 
       if (teamInfo) {
         teamName = teamInfo.name;
-        // For now we don't have teamId in DB — we'll need to map name → ID
-        // Temporary fallback: use API search
         teamId = await getTeamIdFromName(teamName);
       } else {
-        // No match in DB → try direct API search
         teamId = await getTeamIdFromName(args);
         if (!teamId) {
           await ctx.reply(
@@ -48,13 +45,14 @@ export default function registerPredict(bot: any) {
         teamName = args; // use input as fallback
       }
 
+      teamId = await getTeamIdTheSportsDB(teamName)
       if (!teamId) {
         await ctx.reply('Could not resolve team ID. Try again or check spelling.');
         return;
       }
 
       // 3. Get next fixture
-      const nextFixture = await getNextFixtureForTeam(teamId);
+      const nextFixture = await getNextFixtureTheSportsDB(teamId);
 
       if (!nextFixture) {
         await ctx.reply(
@@ -65,11 +63,11 @@ export default function registerPredict(bot: any) {
       }
 
       // 4. Basic placeholder reply (we'll expand this later)
-      const opponent = nextFixture.teams.home.id === teamId
-        ? nextFixture.teams.away.name
-        : nextFixture.teams.home.name;
+      const opponent = nextFixture.strHomeTeam === teamName
+        ? nextFixture.strAwayTeam
+        : nextFixture.strHomeTeam;
 
-      const fixtureDate = new Date(nextFixture.fixture.date).toLocaleString('en-GB', {
+      const fixtureDate = new Date(nextFixture.dateEvent + '' + nextFixture.strTime).toLocaleString('en-GB', {
         weekday: 'long',
         day: 'numeric',
         month: 'long',
@@ -78,13 +76,14 @@ export default function registerPredict(bot: any) {
         minute: '2-digit',
         timeZoneName: 'short'
       });
+      const leagueName = nextFixture.strLeague || 'Unknown League';
 
       const reply = `
     *Card Booking Prediction* – ${escapeMarkdownV2(teamName)}
 
 Next Fixture  
 ${escapeMarkdownV2(teamName)} vs ${escapeMarkdownV2(opponent)}  
-${escapeMarkdownV2(nextFixture.league.name)} • ${fixtureDate}
+${escapeMarkdownV2(leagueName)} • ${fixtureDate}
 
 *Historical data & prediction coming soon...*  
 (We're still building the stats engine 🚧)
