@@ -62,35 +62,49 @@ export default function registerPredict(bot: any) {
         return;
       }
 
-      // 4. Basic placeholder reply (we'll expand this later)
-      const opponent = nextFixture.strHomeTeam === teamName
-        ? nextFixture.strAwayTeam
-        : nextFixture.strHomeTeam;
+        // 4. Format safely
+        const opponent = nextFixture.strHomeTeam === teamName
+          ? nextFixture.strAwayTeam
+          : nextFixture.strHomeTeam;
 
-      const fixtureDate = new Date(nextFixture.dateEvent + '' + nextFixture.strTime).toLocaleString('en-GB', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZoneName: 'short'
-      });
-      const leagueName = nextFixture.strLeague || 'Unknown League';
+        const dateStr = nextFixture.dateEvent || '';
+        const timeStr = nextFixture.strTime || 'Unknown time';
 
-      const reply = `
-    *Card Booking Prediction* – ${escapeMarkdownV2(teamName)}
+        let fixtureDate = 'Date not available';
+        if (dateStr && timeStr) {
+            try {
+                const fullDateTime = `${dateStr}T${timeStr}Z`;
+                const dateObj = new Date(fullDateTime);
+                if (!isNaN(dateObj.getTime())) {
+                    fixtureDate = dateObj.toLocaleString('en-GB', {
+                        weekday: 'long',
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        timeZoneName: 'short'
+                    });
+                }
+            } catch (e) {
+              console.warn('Date parse failed:', e);
+            }
+        }
 
-Next Fixture  
-${escapeMarkdownV2(teamName)} vs ${escapeMarkdownV2(opponent)}  
-${escapeMarkdownV2(leagueName)} • ${fixtureDate}
+        const leagueName = nextFixture.strLeague || 'Unknown League';
 
-*Historical data & prediction coming soon...*  
-(We're still building the stats engine 🚧)
-      `;
+        const reply = `
+        *Card Booking Prediction* – ${escapeMarkdownV2(teamName)}
 
-      await ctx.replyWithMarkdownV2(reply.trim());
+        Next Fixture  
+        ${escapeMarkdownV2(teamName)} vs ${escapeMarkdownV2(opponent)}  
+        ${escapeMarkdownV2(leagueName)} • ${escapeMarkdownV2(fixtureDate)}
 
+        *Historical data & prediction coming soon...*  
+        \\(We're still building the stats engine 🚧\\)
+        `.trim();
+
+      await ctx.replyWithMarkdownV2(reply);
     } catch (err: any) {
       console.error('Predict command error:', err);
       await ctx.reply('Sorry, something went wrong while fetching prediction. Try again later.');
