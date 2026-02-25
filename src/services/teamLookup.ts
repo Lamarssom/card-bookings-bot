@@ -48,27 +48,9 @@ export async function findTeamByName(partialName: string): Promise<TeamInfo | nu
 
 export async function getTeamIdFromApi(teamName: string): Promise<number | null> {
   try {
+    const search = teamName.trim().toLowerCase();
     const res = await axios.get('https://v3.football.api-sports.io/teams', {
-      params: { search: teamName },
-      headers: { 'x-apisports-key': config.apiKey }
-    });
-
-    const teams = res.data.response || [];
-    if (teams.length === 0) return null;
-
-    // Prefer exact match or first good one
-    const exact = teams.find((t: any) => t.team.name.toLowerCase() === teamName.toLowerCase());
-    return exact ? exact.team.id : teams[0].team.id;
-  } catch (err) {
-    console.error('Team search API error:', err);
-    return null;
-  }
-}
-
-export async function getTeamIdFromName(teamName: string): Promise<number | null> {
-  try {
-    const res = await axios.get('https://v3.football.api-sports.io/teams', {
-      params: { search: teamName },
+      params: { search: search },
       headers: { 'x-apisports-key': config.apiKey },
       timeout: 8000,
     });
@@ -76,15 +58,19 @@ export async function getTeamIdFromName(teamName: string): Promise<number | null
     const teams = res.data.response || [];
     if (teams.length === 0) return null;
 
-    // Prefer exact match
-    const exact = teams.find((t: any) =>
-      t.team.name.toLowerCase() === teamName.toLowerCase() ||
-      t.team.code?.toLowerCase() === teamName.toLowerCase()
-    );
+    let match = teams.find((t: any) => t.team.name.toLowerCase() === search);
+    if (match) return match.team.id;
 
-    return exact ? exact.team.id : teams[0].team.id;
-  } catch (err) {
-    console.error('Team ID lookup failed:', err);
+    match = teams.find((t: any) => t.team.code?.toLowerCase() === search);
+    if (match) return match.team.id;
+
+    match = teams.find((t: any) => t.team.name.toLowerCase().includes(search));
+    if (match) return match.team.id;
+
+    console.warn(`No exact/partial match for "${teamName}", falling back to first result: ${teams[0].team.name} (ID ${teams[0].team.id})`);
+    return teams[0].team.id;
+  } catch (err: any) {
+    console.error('Team search API error:', err.message || err);
     return null;
   }
 }

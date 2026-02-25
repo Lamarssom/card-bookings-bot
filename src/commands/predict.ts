@@ -26,12 +26,7 @@ export default function registerPredict(bot: any) {
       let displayName = args;
       let searchName = args;
 
-      // Optional: try to improve name from DB (but no longer required for ID)
-      const teamInfo = await findTeamByName(args);
-      if (teamInfo) {
-        displayName = teamInfo.name;
-        searchName = teamInfo.name;
-      }
+      console.log(`Searching team with: "${searchName}" (original input: "${args}")`);
 
       // 1. Get team ID from API-Football
       let teamId: number | null = await getTeamIdApiFootball(searchName);
@@ -48,6 +43,8 @@ export default function registerPredict(bot: any) {
         );
         return;
       }
+
+      console.log(`Resolved team ID: ${teamId} for "${searchName}"`);
 
       // 2. Get next fixture using API-Football
       const nextFixture = await getNextFixtureApiFootball(teamId);
