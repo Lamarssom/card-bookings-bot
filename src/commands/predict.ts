@@ -1,13 +1,12 @@
 // src/commands/predict.ts
 import { Context } from 'telegraf';
 import { findTeamByName } from '../services/teamLookup';
-import { getTeamIdTheSportsDB, getNextFixtureTheSportsDB } from '../services/theSportsDB';
 import { escapeMarkdownV2 } from '../utils';
+import { getTeamIdApiFootball, getNextFixtureApiFootball } from '../services/apiFootballFixtures';  // ← new import
 
 export default function registerPredict(bot: any) {
   bot.command('predict', async (ctx: Context) => {
     try {
-      // 1. Get user input
       const messageText = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
       const args = messageText.split(' ').slice(1).join(' ').trim();
 
@@ -24,92 +23,90 @@ export default function registerPredict(bot: any) {
 
       await ctx.reply('🔍 Looking up team and next match...');
 
-      // 2. Resolve display name and search name
-      let displayName = args; // what shows in reply
-      let searchName = args;  // what we search TheSportsDB with
+      let displayName = args;
+      let searchName = args;
 
-      // Prefer DB match for cleaner name if available
+      // Optional: try to improve name from DB (but no longer required for ID)
       const teamInfo = await findTeamByName(args);
       if (teamInfo) {
         displayName = teamInfo.name;
-        searchName = teamInfo.name; // DB names are often more accurate
+        searchName = teamInfo.name;
       }
 
-      // 3. Get team ID from TheSportsDB
-      let teamId: number | null = await getTeamIdTheSportsDB(searchName);
+      // 1. Get team ID from API-Football
+      let teamId: number | null = await getTeamIdApiFootball(searchName);
 
-      // Fallback: try original user input if DB name failed
+      // Fallback to raw input if needed
       if (!teamId) {
-        teamId = await getTeamIdTheSportsDB(args);
+        teamId = await getTeamIdApiFootball(args);
       }
 
       if (!teamId) {
         await ctx.reply(
-          `Could not find "${args}" on sports database.\n` +
+          `Could not find "${args}" in API-Football.\n` +
           'Try exact spelling (e.g. "Man United", "Barcelona", "Man City").'
         );
         return;
       }
 
-      // 4. Get next fixture
-      const nextFixture = await getNextFixtureTheSportsDB(teamId);
+      // 2. Get next fixture using API-Football
+      const nextFixture = await getNextFixtureApiFootball(teamId);
 
       if (!nextFixture) {
         await ctx.reply(
-          `No upcoming fixture found for ${escapeMarkdownV2(displayName)}.\n` +
-          'Season might be paused or no data available yet.'
+          `No upcoming fixture found for ${escapeMarkdownV2(displayName)} in the next 60 days.\n` +
+          '(Free tier limitation or off-season)'
         );
         return;
       }
 
-      // 5. Format opponent and date safely
-      const opponent = nextFixture.strHomeTeam === displayName
-        ? nextFixture.strAwayTeam
-        : nextFixture.strHomeTeam;
+      // 3. Extract data safely
+      const homeTeam = nextFixture.teams.home.name;
+      const awayTeam = nextFixture.teams.away.name;
+      const leagueName = nextFixture.league.name || 'Unknown League';
 
+      // Determine which is our team
+      const isHome = homeTeam.toLowerCase().includes(displayName.toLowerCase());
+      const opponent = isHome ? awayTeam : homeTeam;
+
+      // Format date nicely (no weird escapes needed)
       let fixtureDateStr = 'Date/time not available';
-
-      if (nextFixture.dateEvent && nextFixture.strTime) {
-        try {
-          const [year, month, day] = nextFixture.dateEvent.split('-');
-          const [hour, min] = nextFixture.strTime.split(':').map((s: string) => s.padStart(2, '0'));
-
-          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-          const monthName = monthNames[parseInt(month, 10) - 1] || month;
-
-          fixtureDateStr = `${day} ${monthName} ${year} ${hour}:${min} UTC`;
-        } catch (e) {
-          console.warn('Date parse failed:', e);
-          fixtureDateStr = `${nextFixture.dateEvent || 'Unknown'} ${nextFixture.strTime || ''}`;
-        }
+      if (nextFixture.fixture.date) {
+        const dateObj = new Date(nextFixture.fixture.date);
+        fixtureDateStr = dateObj.toLocaleString('en-GB', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZoneName: 'short',
+        });
       }
 
-      const leagueName = nextFixture.strLeague || 'Unknown League';
-
-      // Escape each dynamic part
+      // Escape dynamic parts
       const safeTeam = escapeMarkdownV2(displayName);
       const safeOpponent = escapeMarkdownV2(opponent);
       const safeLeague = escapeMarkdownV2(leagueName);
       const safeDate = escapeMarkdownV2(fixtureDateStr);
 
-      // Build reply (no indentation issues, all escaped)
+      // Build reply
       const reply = `*Card Booking Prediction* – ${safeTeam}
 
 Next Fixture  
 ${safeTeam} vs ${safeOpponent}  
 ${safeLeague} • ${safeDate}
 
-*Historical data & prediction coming soon...*  
+*Historical data & prediction coming soon\\.\\.\\.*  
 \\(We're still building the stats engine 🚧\\)`.trim();
 
-      // Debug log
       console.log('Final MarkdownV2 reply:\n' + reply);
 
       await ctx.replyWithMarkdownV2(reply);
 
     } catch (err: any) {
       console.error('Predict command error:', err);
-      await ctx.reply('Sorry, something went wrong while fetching prediction. Try again later.');
+      await ctx.reply('Sorry, something went wrong. Try again later.');
     }
   });
 }
