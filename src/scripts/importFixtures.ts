@@ -7,6 +7,7 @@ import { Fixture } from '../models/Fixture';
 import mongoose from 'mongoose';
 import { config } from '../config';
 import { parse } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
 
 const teamNameMap = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/team-normalization.json'), 'utf-8'));
 
@@ -42,32 +43,29 @@ async function importAllFixtures() {
           const dateTimeStr = row.Date || row['Date/Time'] || '';
           const dateTimeStrTrim = dateTimeStr.trim();
 
-          if (!dateTimeStrTrim) {
+          if (!homeRaw || !awayRaw || !dateTimeStrTrim) {
             totalSkipped++;
             return;
           }
 
-          const parsedDate = parse(dateTimeStrTrim, 'dd/MM/yyyy HH:mm', new Date());
-
-
-          if (isNaN(parsedDate.getTime())) {
-            console.warn(`date-fns parse for: "${dateTimeStrTrim}" (skipping row)`);
+          const parsedLocal = parse(dateTimeStrTrim, 'dd/MM/yyyy HH:mm', new Date());
+          if (isNaN(parsedLocal.getTime())) {
+            console.warn(`Parse failed: "${dateTimeStrTrim}"`);
             totalSkipped++;
             return;
           }
 
-          console.log(`Parsed OK with date-fns: ${parsedDate.toISOString()} | home: "${homeRaw}" | away: "${awayRaw}"`);
-
-          const home = normalizeTeamName(homeRaw);
-          const away = normalizeTeamName(awayRaw);
+          const parsedUTC = toZonedTime(parsedLocal, 'UTC');
 
           results.push({
-            homeTeam: home,
-            awayTeam: away,
-            date: parsedDate,
+            homeTeam: normalizeTeamName(homeRaw),
+            awayTeam: normalizeTeamName(awayRaw),
+            date: parsedUTC,
             league: 'Premier League',
             round: row['Round Number'] || row.Round || '',
           });
+
+          console.log(`Parsed UTC: ${parsedUTC.toISOString()} | home: "${homeRaw}" | away: "${awayRaw}"`);
         })
         .on('end', async () => {
           for (const fix of results) {
