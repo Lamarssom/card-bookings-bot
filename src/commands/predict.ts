@@ -23,15 +23,11 @@ export default function registerPredict(bot: any) {
 
       const now = new Date();
 
-      // Improved team matching: allow partial/full/abbrev matches
       const nextFixture = await Fixture.findOne({
         $or: [
           { homeTeam: { $regex: displayName, $options: 'i' } },
           { awayTeam: { $regex: displayName, $options: 'i' } },
-          // Extra fallback for common abbrevs in CSV
-          { homeTeam: { $regex: 'Man Utd|Spurs|Nott\'m Forest|Wolves|Leicester', $options: 'i' } },
-          { awayTeam: { $regex: 'Man Utd|Spurs|Nott\'m Forest|Wolves|Leicester', $options: 'i' } }
-        ].map(cond => ({ ...cond, date: { $gt: now }, league: 'Premier League' })),
+        ],
         date: { $gt: now },
         league: 'Premier League'
       }).sort({ date: 1 });
@@ -48,7 +44,8 @@ export default function registerPredict(bot: any) {
       const away = nextFixture.awayTeam;
 
       // Normalize display to full name if possible (optional improvement)
-      const ourTeam = home.toLowerCase().includes(displayName.toLowerCase()) ? home : away;
+      const ourTeamRaw = home.toLowerCase().includes(displayName.toLowerCase()) ? home : away;
+      const ourTeam = ourTeamRaw
       const opponent = home === ourTeam ? away : home;
 
       const fixtureDateStr = nextFixture.date.toLocaleString('en-GB', {
@@ -61,8 +58,7 @@ export default function registerPredict(bot: any) {
         timeZoneName: 'short',
       });
 
-      // --- Real H2H Prediction ---
-      // Improved match: any fixture involving BOTH teams (home/away swapped ok)
+      // --- H2H Prediction ---
       const h2h = await Card.aggregate([
         {
           $match: {

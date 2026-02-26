@@ -36,42 +36,48 @@ async function importAllFixtures() {
       fs.createReadStream(filePath)
         .pipe(csv())
         .on('data', (row: any) => {
-          // Use exact column names from your sample
           const homeRaw = row['Home Team'] || row.HomeTeam || '';
           const awayRaw = row['Away Team'] || row.AwayTeam || '';
-          const dateTimeStr = row.Date || row['Date/Time'] || ''; // already has time
+          const dateTimeStr = row.Date || row['Date/Time'] || '';
+
+          console.log(`Raw row date: "${dateTimeStr}" | home: "${homeRaw}" | away: "${awayRaw}"`);
 
           if (!homeRaw || !awayRaw || !dateTimeStr) {
             totalSkipped++;
+            console.log('Skipped: missing fields');
             return;
           }
+
+          const [datePart, timePart = ''] = dateTimeStr.trim().split(/\s+/);
+          console.log(`Split → datePart: "${datePart}" | timePart: "${timePart}"`);
+
+          if (!datePart) {
+            totalSkipped++;
+            return;
+          }
+
+          const dateParts = datePart.split('/');
+          if (dateParts.length !== 3) {
+            console.warn(`Bad date format: ${datePart}`);
+            totalSkipped++;
+            return;
+          }
+
+          const [day, month, year] = dateParts.map(Number);
+          const [hour = 0, min = 0] = timePart.split(':').map(Number);
+
+          const fullDate = new Date(year, month - 1, day, hour, min);
+
+          if (isNaN(fullDate.getTime())) {
+            console.warn(`Invalid Date created from: year=${year}, month=${month}, day=${day}, hour=${hour}, min=${min} → ${fullDate}`);
+            totalSkipped++;
+            return;
+          }
+
+          console.log(`Parsed OK: ${fullDate.toISOString()}`);
 
           const home = normalizeTeamName(homeRaw);
           const away = normalizeTeamName(awayRaw);
-
-          // Parse DD/MM/YYYY HH:mm → new Date handles it if locale-aware, but force parse
-          const [datePart, timePart] = dateTimeStr.split(' ');
-          if (!datePart || !timePart) {
-            totalSkipped++;
-            return;
-          }
-
-          const [day, month, year] = datePart.split('/');
-          const [hour, min] = timePart.split(':');
-
-          const fullDate = new Date(
-            Number(year),
-            Number(month) - 1, // JS months 0-based
-            Number(day),
-            Number(hour),
-            Number(min) || 0
-          );
-
-          if (isNaN(fullDate.getTime())) {
-            console.warn(`Invalid date skipped in ${file}: ${dateTimeStr}`);
-            totalSkipped++;
-            return;
-          }
 
           results.push({
             homeTeam: home,

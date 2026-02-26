@@ -16,6 +16,7 @@
     "@types/node": "^25.1.0",
     "axios": "^1.13.4",
     "csv-parser": "^3.2.0",
+    "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "mongoose": "^9.1.5",
     "telegraf": "^4.16.3",
