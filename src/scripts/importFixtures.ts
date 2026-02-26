@@ -6,6 +6,7 @@ import path from 'path';
 import { Fixture } from '../models/Fixture';
 import mongoose from 'mongoose';
 import { config } from '../config';
+import { parse } from 'date-fns';
 
 const teamNameMap = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/team-normalization.json'), 'utf-8'));
 
@@ -38,43 +39,18 @@ async function importAllFixtures() {
         .on('data', (row: any) => {
           const homeRaw = row['Home Team'] || row.HomeTeam || '';
           const awayRaw = row['Away Team'] || row.AwayTeam || '';
-          const dateTimeStr = row.Date || row['Date/Time'] || '';
+          const dateTimeStrTrim = dateTimeStr.trim();
 
-          console.log(`Raw row date: "${dateTimeStr}" | home: "${homeRaw}" | away: "${awayRaw}"`);
+          const parsedDate = parse(dateTimeStrTrim, 'dd/MM/yyyy HH:mm', new Date());
 
-          if (!homeRaw || !awayRaw || !dateTimeStr) {
-            totalSkipped++;
-            console.log('Skipped: missing fields');
-            return;
-          }
 
-          const [datePart, timePart = ''] = dateTimeStr.trim().split(/\s+/);
-          console.log(`Split → datePart: "${datePart}" | timePart: "${timePart}"`);
-
-          if (!datePart) {
+          if (isNaN(parsedDate.getTime())) {
+            console.warn(`date-fns parse for: "${dateTimeStrTrim}" (skipping row)`);
             totalSkipped++;
             return;
           }
 
-          const dateParts = datePart.split('/');
-          if (dateParts.length !== 3) {
-            console.warn(`Bad date format: ${datePart}`);
-            totalSkipped++;
-            return;
-          }
-
-          const [day, month, year] = dateParts.map(Number);
-          const [hour = 0, min = 0] = timePart.split(':').map(Number);
-
-          const fullDate = new Date(year, month - 1, day, hour, min);
-
-          if (isNaN(fullDate.getTime())) {
-            console.warn(`Invalid Date created from: year=${year}, month=${month}, day=${day}, hour=${hour}, min=${min} → ${fullDate}`);
-            totalSkipped++;
-            return;
-          }
-
-          console.log(`Parsed OK: ${fullDate.toISOString()}`);
+          console.log(`Parsed OK with date-fns: ${parsedDate.toISOString()} | home: "${homeRaw}" | away: "${awayRaw}"`);
 
           const home = normalizeTeamName(homeRaw);
           const away = normalizeTeamName(awayRaw);
@@ -82,7 +58,7 @@ async function importAllFixtures() {
           results.push({
             homeTeam: home,
             awayTeam: away,
-            date: fullDate,
+            date: parsedDate,
             league: 'Premier League',
             round: row['Round Number'] || row.Round || '',
           });
