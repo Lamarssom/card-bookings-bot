@@ -7,17 +7,11 @@ import { Fixture } from '../models/Fixture';
 import mongoose from 'mongoose';
 import { config } from '../config';
 
-const teamNameMap: Record<string, string> = {
-  'Man Utd': 'Manchester United',
-  'Man City': 'Manchester City',
-  'Nott\'m Forest': 'Nottingham Forest',
-  'Spurs': 'Tottenham Hotspur',
-  'Leicester': 'Leicester City',
-  'Wolves': 'Wolverhampton Wanderers',
-};
+const teamNameMap = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/team-normalization.json'), 'utf-8'));
 
 function normalizeTeamName(name: string): string {
-  return teamNameMap[name.trim()] || name.trim();
+  const trimmed = name.trim();
+  return teamNameMap[trimmed] || trimmed;
 }
 
 async function importAllFixtures() {
@@ -31,9 +25,10 @@ async function importAllFixtures() {
   const files = fs.readdirSync(fixturesDir).filter(f => f.endsWith('.csv'));
 
   let totalImported = 0;
+  let totalSkipped = 0;
 
   for (const file of files) {
-    console.log(`Processing ${file}...`);
+    console.log(`\nProcessing ${file}...`);
     const filePath = path.join(fixturesDir, file);
 
     const results: any[] = [];
@@ -41,28 +36,49 @@ async function importAllFixtures() {
       fs.createReadStream(filePath)
         .pipe(csv())
         .on('data', (row: any) => {
-          const home = normalizeTeamName(
-            row.HomeTeam || row['Home Team'] || ''
+          // Use exact column names from your sample
+          const homeRaw = row['Home Team']  row.HomeTeam  '';
+          const awayRaw = row['Away Team']  row.AwayTeam  '';
+          const dateTimeStr = row.Date  row['Date/Time']  ''; // already has time
+
+          if (!homeRaw  !awayRaw  !dateTimeStr) {
+            totalSkipped++;
+            return;
+          }
+
+          const home = normalizeTeamName(homeRaw);
+          const away = normalizeTeamName(awayRaw);
+
+          // Parse DD/MM/YYYY HH:mm → new Date handles it if locale-aware, but force parse
+          const [datePart, timePart] = dateTimeStr.split(' ');
+          if (!datePart || !timePart) {
+            totalSkipped++;
+            return;
+          }
+
+          const [day, month, year] = datePart.split('/');
+          const [hour, min] = timePart.split(':');
+
+          const fullDate = new Date(
+            Number(year),
+            Number(month) - 1, // JS months 0-based
+            Number(day),
+            Number(hour),
+            Number(min) || 0
           );
 
-          const away = normalizeTeamName(
-            row.AwayTeam || row['Away Team'] || ''
-          );
-
-          const dateStr = row.Date || row['Date/Time'] || '';
-          const timeStr = row.Time || '15:00';
-
-          if (!home || !away || !dateStr) return;
-
-          const fullDate = new Date(`${dateStr} ${timeStr}`);
-          if (isNaN(fullDate.getTime())) return;
+          if (isNaN(fullDate.getTime())) {
+            console.warn(`Invalid date skipped in ${file}: ${dateTimeStr}`);
+            totalSkipped++;
+            return;
+          }
 
           results.push({
             homeTeam: home,
             awayTeam: away,
             date: fullDate,
             league: 'Premier League',
-            round: row.Round || row['Round Number'] || '',
+            round: row['Round Number']  row.Round  '',
           });
         })
         .on('end', async () => {
@@ -73,24 +89,28 @@ async function importAllFixtures() {
                 fix,
                 { upsert: true }
               );
-            } catch (e) {
-              console.warn('Duplicate/skip:', e);
+            } catch (e: any) {
+              if (e.code !== 11000) console.warn('Save warning:', e.message);
             }
           }
           totalImported += results.length;
-          console.log(`Imported ${results.length} from ${file}`);
+          console.log(`Imported ${results.length} fixtures from ${file} (skipped ${totalSkipped} invalid rows)`);
           resolve();
         })
-        .on('error', reject);
+        .on('error', (err) => {
+          console.error(`CSV parse error in ${file}:`, err);
+          reject(err);
+        });
     });
   }
 
-  console.log(`\nTotal fixtures imported across all files: ${totalImported}`);
+  console.log(`\n=== FINAL SUMMARY ===\nTotal fixtures imported: ${totalImported}\nTotal rows skipped (invalid): ${totalSkipped}`);
   mongoose.disconnect();
   process.exit(0);
 }
 
 importAllFixtures().catch(err => {
-  console.error('Import failed:', err);
+  console.
+  error('Import failed:', err);
   process.exit(1);
 });
