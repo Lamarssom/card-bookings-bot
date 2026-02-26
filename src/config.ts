@@ -2,6 +2,7 @@ export const config = {
   botToken: process.env.BOT_TOKEN!,
   apiKey: process.env.API_KEY || '',
   footballDataToken: process.env.FOOTBALL_DATA_TOKEN || '',
+  mongoUri: process.env.MONGO_URI!,
   leagues: [
     { id: 39, code: 'PL', name: 'Premier League' },
     { id: 140, code: 'PD', name: 'La Liga' },

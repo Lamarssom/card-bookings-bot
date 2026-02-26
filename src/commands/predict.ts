@@ -1,8 +1,8 @@
 // src/commands/predict.ts
 import { Context } from 'telegraf';
-import { findTeamByName } from '../services/teamLookup';
 import { escapeMarkdownV2 } from '../utils';
-import { getTeamIdApiFootball, getNextFixtureApiFootball } from '../services/apiFootballFixtures';  // ← new import
+import { Fixture } from '../models/Fixture';
+import { Card } from '../models/Card';
 
 export default function registerPredict(bot: any) {
   bot.command('predict', async (ctx: Context) => {
@@ -12,98 +12,101 @@ export default function registerPredict(bot: any) {
 
       if (!args) {
         await ctx.reply(
-          'Please provide a team name.\n\n' +
-          'Examples:\n' +
-          '/predict Manchester United\n' +
-          '/predict Arsenal\n' +
-          '/predict Man City vs Liverpool'
+          'Please provide a team name.\n\nExamples:\n/predict Manchester United\n/predict Arsenal'
         );
         return;
       }
 
-      await ctx.reply('🔍 Looking up team and next match...');
+      await ctx.reply('🔍 Looking up next match and card prediction...');
 
-      let displayName = args;
-      let searchName = args;
+      const displayName = args; // we'll normalize in query
 
-      console.log(`Searching team with: "${searchName}" (original input: "${args}")`);
+      const now = new Date();
 
-      // 1. Get team ID from API-Football
-      let teamId: number | null = await getTeamIdApiFootball(searchName);
-
-      // Fallback to raw input if needed
-      if (!teamId) {
-        teamId = await getTeamIdApiFootball(args);
-      }
-
-      if (!teamId) {
-        await ctx.reply(
-          `Could not find "${args}" in API-Football.\n` +
-          'Try exact spelling (e.g. "Man United", "Barcelona", "Man City").'
-        );
-        return;
-      }
-
-      console.log(`Resolved team ID: ${teamId} for "${searchName}"`);
-
-      // 2. Get next fixture using API-Football
-      const nextFixture = await getNextFixtureApiFootball(teamId);
+      // Find next fixture where team is home or away
+      const nextFixture = await Fixture.findOne({
+        $or: [
+          { homeTeam: { $regex: new RegExp(`^${displayName}$|^Man Utd$`, 'i') } }, // handles abbr + full
+          { awayTeam: { $regex: new RegExp(`^${displayName}$|^Man Utd$`, 'i') } }
+        ],
+        date: { $gt: now },
+        league: 'Premier League'
+      }).sort({ date: 1 });
 
       if (!nextFixture) {
         await ctx.reply(
-          `No upcoming fixture found for ${escapeMarkdownV2(displayName)} in the next 60 days.\n` +
-          '(Free tier limitation or off-season)'
+          `No upcoming fixture found for "${displayName}" in the database.\n` +
+          'Make sure fixtures are imported!'
         );
         return;
       }
 
-      // 3. Extract data safely
-      const homeTeam = nextFixture.teams.home.name;
-      const awayTeam = nextFixture.teams.away.name;
-      const leagueName = nextFixture.league.name || 'Unknown League';
+      const home = nextFixture.homeTeam;
+      const away = nextFixture.awayTeam;
+      const opponent = home.toLowerCase().includes(displayName.toLowerCase()) ? away : home;
 
-      // Determine which is our team
-      const isHome = homeTeam.toLowerCase().includes(displayName.toLowerCase());
-      const opponent = isHome ? awayTeam : homeTeam;
+      const fixtureDateStr = nextFixture.date.toLocaleString('en-GB', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZoneName: 'short',
+      });
 
-      // Format date nicely (no weird escapes needed)
-      let fixtureDateStr = 'Date/time not available';
-      if (nextFixture.fixture.date) {
-        const dateObj = new Date(nextFixture.fixture.date);
-        fixtureDateStr = dateObj.toLocaleString('en-GB', {
-          weekday: 'long',
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          timeZoneName: 'short',
-        });
+      // --- Real H2H Prediction ---
+      const h2h = await Card.aggregate([
+        {
+          $match: {
+            $or: [
+              { homeTeam: { $regex: new RegExp(`(${home}|${away})`, 'i') }, awayTeam: { $regex: new RegExp(`(${home}|${away})`, 'i') } },
+              { homeTeam: { $regex: new RegExp(`(${away}|${home})`, 'i') }, awayTeam: { $regex: new RegExp(`(${home}|${away})`, 'i') } }
+            ],
+            date: { $gte: new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000) } // last ~5 seasons
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            count: { $sum: 1 },
+            totalYellow: { $sum: '$yellowCards' },
+            totalRed: { $sum: '$redCards' }
+          }
+        }
+      ]);
+
+      const stats = h2h[0] || { count: 0, totalYellow: 0, totalRed: 0 };
+      const avgYellow = stats.count ? (stats.totalYellow / stats.count).toFixed(1) : 'N/A';
+      const avgRed = stats.count ? (stats.totalRed / stats.count).toFixed(1) : 'N/A';
+
+      let predictionText = '\n\n*No historical card data yet for this matchup* — engine learning 📈';
+      if (stats.count > 0) {
+        const totalAvg = (parseFloat(avgYellow) + parseFloat(avgRed)).toFixed(1);
+        predictionText = `\n\n*Prediction from last ${stats.count} H2H meetings:*\n` +
+          `• Avg yellow cards: *${avgYellow}*\n` +
+          `• Avg red cards: *${avgRed}*\n` +
+          `• Total cards avg: *${totalAvg}* → ${parseFloat(totalAvg) > 4.5 ? 'OVER 4.5 likely 🔥' : 'UNDER 4.5 likely ❄️'}`;
       }
 
-      // Escape dynamic parts
-      const safeTeam = escapeMarkdownV2(displayName);
-      const safeOpponent = escapeMarkdownV2(opponent);
-      const safeLeague = escapeMarkdownV2(leagueName);
+      // Escape & build reply
+      const safeHome = escapeMarkdownV2(home);
+      const safeAway = escapeMarkdownV2(away);
       const safeDate = escapeMarkdownV2(fixtureDateStr);
 
-      // Build reply
-      const reply = `*Card Booking Prediction* – ${safeTeam}
+      const reply = `*Card Booking Prediction* – ${escapeMarkdownV2(displayName)}\n\n` +
+        `Next Fixture  \n` +
+        `${safeHome} vs ${safeAway}  \n` +
+        `Premier League • ${safeDate}\n\n` +
+        predictionText +
+        `\n\n\\(Stats from your DB – more seasons = better predictions 🚀\\).trim()`;
 
-Next Fixture  
-${safeTeam} vs ${safeOpponent}  
-${safeLeague} • ${safeDate}
-
-*Historical data & prediction coming soon\\.\\.\\.*  
-\\(We're still building the stats engine 🚧\\)`.trim();
-
-      console.log('Final MarkdownV2 reply:\n' + reply);
+      console.log('Sending MarkdownV2:\n' + reply);
 
       await ctx.replyWithMarkdownV2(reply);
-
     } catch (err: any) {
-      console.error('Predict command error:', err);
-      await ctx.reply('Sorry, something went wrong. Try again later.');
+      console.error('Predict error:', err);
+      await ctx.reply('Error fetching prediction. Check logs.');
     }
   });
 }

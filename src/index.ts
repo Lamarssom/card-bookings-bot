@@ -3,7 +3,7 @@ import { Stage } from 'telegraf/scenes';
 import dotenv from 'dotenv';
 import { connectDB } from './db';
 import { escapeMarkdownV2 } from './utils';
-import { Card } from './db';
+import { Card } from './models/Card';
 import type { BotContext, BotSession } from './types';
 
 // Command registrars

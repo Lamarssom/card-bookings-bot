@@ -27,13 +27,14 @@ export async function getNextFixtureApiFootball(teamId: number): Promise<any | n
   try {
     const today = new Date().toISOString().split('T')[0];
     // Look 60 days ahead (covers most cases; adjust if needed)
-    const future = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const future = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     console.log(`Fetching next fixture for team ${teamId} from ${today} to ${future}`);
 
     const res = await axios.get(`${BASE_URL}/fixtures`, {
       params: {
         team: teamId,
+        season: 2025,
         from: today,
         to: future,
         timezone: 'UTC',
@@ -41,6 +42,7 @@ export async function getNextFixtureApiFootball(teamId: number): Promise<any | n
       headers: { 'x-apisports-key': config.apiKey },
       timeout: 15000,
     });
+    console.log('Raw API-Football response for upcoming fixtures:', JSON.stringify(res.data, null, 2));
 
     let fixtures = res.data.response || [];
 

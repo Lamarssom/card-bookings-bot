@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Card } from '../db';
+import { Card } from '../models/Card';
 import { config } from '../config';
 
 export async function saveCardsFromFixture(fixture: any, events: any[]) {
