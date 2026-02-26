@@ -37,11 +37,11 @@ async function importAllFixtures() {
         .pipe(csv())
         .on('data', (row: any) => {
           // Use exact column names from your sample
-          const homeRaw = row['Home Team']  row.HomeTeam  '';
-          const awayRaw = row['Away Team']  row.AwayTeam  '';
-          const dateTimeStr = row.Date  row['Date/Time']  ''; // already has time
+          const homeRaw = row['Home Team'] || row.HomeTeam || '';
+          const awayRaw = row['Away Team'] || row.AwayTeam || '';
+          const dateTimeStr = row.Date || row['Date/Time'] || ''; // already has time
 
-          if (!homeRaw  !awayRaw  !dateTimeStr) {
+          if (!homeRaw || !awayRaw || !dateTimeStr) {
             totalSkipped++;
             return;
           }
@@ -78,7 +78,7 @@ async function importAllFixtures() {
             awayTeam: away,
             date: fullDate,
             league: 'Premier League',
-            round: row['Round Number']  row.Round  '',
+            round: row['Round Number'] || row.Round || '',
           });
         })
         .on('end', async () => {
