@@ -1,7 +1,6 @@
 import mongoose from 'mongoose';
 
 const fixtureSchema = new mongoose.Schema({
-  apiFixtureId: { type: Number, unique: true }, // important
   homeTeam: { type: String, required: true },
   awayTeam: { type: String, required: true },
   date: { type: Date, required: true },
@@ -11,6 +10,6 @@ const fixtureSchema = new mongoose.Schema({
   status: { type: String, default: 'SCHEDULED' }
 }, { timestamps: true });
 
-fixtureSchema.index({ leagueId: 1, date: -1 });
+fixtureSchema.index({ homeTeam: 1, awayTeam: 1, date: 1 }, { unique: true });
 
 export const Fixture = mongoose.model('Fixture', fixtureSchema);

@@ -18,7 +18,7 @@ function normalizeTeamName(name: string): string {
 
 async function importAllFixtures() {
   await mongoose.connect(config.mongoUri);
-  console.log('MongoDB connected for import');
+  console.log(`Connected to: ${mongoose.connection.db!.databaseName}`);
 
   await Fixture.deleteMany({ league: 'Premier League' });
   console.log('Cleared existing Premier League fixtures');
@@ -34,16 +34,16 @@ async function importAllFixtures() {
     const filePath = path.join(fixturesDir, file);
 
     const results: any[] = [];
+
+    // Read CSV
     await new Promise<void>((resolve, reject) => {
       fs.createReadStream(filePath)
         .pipe(csv())
         .on('data', (row: any) => {
-          const homeRaw = row['Home Team'] || row.HomeTeam || '';
-          const awayRaw = row['Away Team'] || row.AwayTeam || '';
-          const dateTimeStr = row.Date || row['Date/Time'] || '';
-          const dateTimeStrTrim = dateTimeStr.trim();
+          // ... your existing parsing logic ...
+          const dateTimeStrTrim = (row.Date || row['Date/Time'] || '').trim();
 
-          if (!homeRaw || !awayRaw || !dateTimeStrTrim) {
+          if (!row['Home Team'] || !row['Away Team'] || !dateTimeStrTrim) {
             totalSkipped++;
             return;
           }
@@ -58,45 +58,48 @@ async function importAllFixtures() {
           const parsedUTC = toZonedTime(parsedLocal, 'UTC');
 
           results.push({
-            homeTeam: normalizeTeamName(homeRaw),
-            awayTeam: normalizeTeamName(awayRaw),
+            homeTeam: normalizeTeamName(row['Home Team']),
+            awayTeam: normalizeTeamName(row['Away Team']),
             date: parsedUTC,
             league: 'Premier League',
             round: row['Round Number'] || row.Round || '',
           });
-
-          console.log(`Parsed UTC: ${parsedUTC.toISOString()} | home: "${homeRaw}" | away: "${awayRaw}"`);
         })
-        .on('end', async () => {
-          for (const fix of results) {
-            try {
-              await Fixture.findOneAndUpdate(
-                { homeTeam: fix.homeTeam, awayTeam: fix.awayTeam, date: fix.date },
-                fix,
-                { upsert: true }
-              );
-            } catch (e: any) {
-              if (e.code !== 11000) console.warn('Save warning:', e.message);
-            }
-          }
-          totalImported += results.length;
-          console.log(`Imported ${results.length} fixtures from ${file} (skipped ${totalSkipped} invalid rows)`);
-          resolve();
-        })
-        .on('error', (err) => {
-          console.error(`CSV parse error in ${file}:`, err);
-          reject(err);
-        });
+        .on('end', resolve)
+        .on('error', reject);
     });
+
+    // Now bulk upsert all at once (faster + waits properly)
+    if (results.length > 0) {
+      const operations = results.map(fix => ({
+        updateOne: {
+          filter: { homeTeam: fix.homeTeam, awayTeam: fix.awayTeam, date: fix.date },
+          update: { $set: fix },
+          upsert: true
+        }
+      }));
+
+      try {
+        const bulkResult = await Fixture.bulkWrite(operations, { ordered: false });
+        totalImported += bulkResult.matchedCount + bulkResult.upsertedCount;
+        console.log(`Bulk upsert: matched ${bulkResult.matchedCount}, upserted ${bulkResult.upsertedCount}, modified ${bulkResult.modifiedCount}`);
+      } catch (e: any) {
+        console.error(`Bulk write error in ${file}:`, e.message);
+      }
+    }
+
+    console.log(`Processed ${file}: ${results.length} parsed, total imported so far: ${totalImported}`);
   }
 
-  console.log(`\n=== FINAL SUMMARY ===\nTotal fixtures imported: ${totalImported}\nTotal rows skipped (invalid): ${totalSkipped}`);
-  mongoose.disconnect();
+  console.log(`\n=== FINAL SUMMARY ===\nTotal fixtures imported: ${totalImported}\nTotal rows skipped: ${totalSkipped}`);
+
+  // Disconnect ONLY after everything
+  await mongoose.disconnect();
+  console.log('Disconnected from MongoDB');
   process.exit(0);
 }
 
 importAllFixtures().catch(err => {
-  console.
-  error('Import failed:', err);
+  console.error('Import failed:', err);
   process.exit(1);
 });
