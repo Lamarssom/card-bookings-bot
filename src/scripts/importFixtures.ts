@@ -39,7 +39,13 @@ async function importAllFixtures() {
         .on('data', (row: any) => {
           const homeRaw = row['Home Team'] || row.HomeTeam || '';
           const awayRaw = row['Away Team'] || row.AwayTeam || '';
+          const dateTimeStr = row.Date || row['Date/Time'] || '';
           const dateTimeStrTrim = dateTimeStr.trim();
+
+          if (!dateTimeStrTrim) {
+            totalSkipped++;
+            return;
+          }
 
           const parsedDate = parse(dateTimeStrTrim, 'dd/MM/yyyy HH:mm', new Date());
 
