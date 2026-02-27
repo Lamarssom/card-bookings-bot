@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Card } from '@prisma/client';
+import { prisma } from '../db';
 import { config } from '../config';
 
 export async function saveCardsFromFixture(fixture: any, events: any[]) {
@@ -53,15 +54,17 @@ export async function saveCardsFromFixture(fixture: any, events: any[]) {
     };
 
     try {
-      await Card.findOneAndUpdate(
-        {
-          fixtureId: cardData.fixtureId,
-          player: cardData.player,
-          minute: cardData.minute,
+      await prisma.card.upsert({
+        where: {
+          fixtureId_player_minute: {
+            fixtureId: cardData.fixtureId,
+            player: cardData.player,
+            minute: cardData.minute,
+          },
         },
-        cardData,
-        { upsert: true }
-      );
+        update: cardData,
+        create: cardData,
+      });
       savedCount++;
     } catch (err: any) {
       // Only log real errors (not duplicates)

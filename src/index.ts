@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { connectDB } from './db';
 import { escapeMarkdownV2 } from './utils';
 import { Card } from '@prisma/client';
+import { prisma } from './db';
 import type { BotContext, BotSession } from './types';
 
 // Command registrars
@@ -62,8 +63,8 @@ bot.command('teamcards', (ctx) => {
 
 bot.command('debugcards', async (ctx) => {
   try {
-    const total = await Card.countDocuments();
-    const sample = await Card.findOne();
+    const total = await prisma.card.count();
+    const sample = await prisma.card.findFirst();
     await ctx.reply(
       `Total saved cards: ${total}\n` +
       `Sample (if any): ${sample ? JSON.stringify(sample, null, 2).slice(0, 500) : 'None'}`

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Card } from '@prisma/client';
+import { prisma } from '../db';
 import { config } from '../config';
 
 export interface TeamInfo {
@@ -10,39 +11,63 @@ export interface TeamInfo {
 
 export async function findTeamByName(partialName: string): Promise<TeamInfo | null> {
   const search = partialName.trim().toLowerCase();
-
   if (search.length < 3) return null;
 
-  // Aggregate from saved cards (teams that have bookings)
-  const agg = await Card.aggregate([
-    {
-      $match: {
-        $or: [
-          { team:     { $regex: search, $options: 'i' } },
-          { homeTeam: { $regex: search, $options: 'i' } },
-          { awayTeam: { $regex: search, $options: 'i' } },
-        ]
-      }
+  const cards = await prisma.card.findMany({
+    where: {
+      OR: [
+        { team:     { contains: search, mode: 'insensitive' } },
+        { homeTeam: { contains: search, mode: 'insensitive' } },
+        { awayTeam: { contains: search, mode: 'insensitive' } },
+      ],
     },
-    {
-      $group: {
-        _id: '$team', // prefer the 'team' field (who received the card)
-        names: { $addToSet: { $cond: [{ $ne: ['$team', null] }, '$team', { $cond: [{ $ne: ['$homeTeam', null] }, '$homeTeam', '$awayTeam'] }] } },
-        leagueIds: { $addToSet: '$leagueId' }
-      }
+    select: {
+      team: true,
+      homeTeam: true,
+      awayTeam: true,
+      leagueId: true,
     },
-    { $sort: { count: -1 } }, // most frequent first
-    { $limit: 5 }
-  ]);
+    distinct: ['team', 'homeTeam', 'awayTeam'], // helps dedupe somewhat
+    take: 50, // limit to avoid loading too many
+  });
 
-  if (agg.length === 0) return null;
+  // Build a map of team → { appearances, leagues }
+  const teamMap = new Map<string, { count: number; leagues: Set<number>; names: Set<string> }>();
 
-  // Pick the best match (most appearances or exact-ish)
-  const best = agg[0];
+  for (const c of cards) {
+    const candidates = [c.team, c.homeTeam, c.awayTeam].filter(Boolean) as string[];
+    for (const name of candidates) {
+      const norm = name.trim();
+      if (!norm.toLowerCase().includes(search)) continue;
+
+      if (!teamMap.has(norm)) {
+        teamMap.set(norm, { count: 0, leagues: new Set(), names: new Set() });
+      }
+      const entry = teamMap.get(norm)!;
+      entry.count++;
+      if (c.leagueId) entry.leagues.add(c.leagueId);
+      entry.names.add(norm);
+    }
+  }
+
+  // Convert to array and sort by count desc
+  const results = Array.from(teamMap.entries())
+    .map(([name, data]) => ({
+      name,
+      count: data.count,
+      leagueIds: Array.from(data.leagues),
+      possibleNames: Array.from(data.names),
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  if (results.length === 0) return null;
+
+  const best = results[0];
   return {
-    name: best._id || best.names[0],
-    possibleNames: best.names,
-    leagueIds: best.leagueIds
+    name: best.name,
+    possibleNames: best.possibleNames,
+    leagueIds: best.leagueIds,
   };
 }
 

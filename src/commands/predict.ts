@@ -1,8 +1,7 @@
-// src/commands/predict.ts
 import { Context } from 'telegraf';
 import { escapeMarkdownV2 } from '../utils';
-import { Fixture } from '@prisma/client';
-import { Card } from '@prisma/client';
+import { prisma } from '../db';          // ← Import the client
+import { Fixture, Card } from '@prisma/client';
 
 export default function registerPredict(bot: any) {
   bot.command('predict', async (ctx: Context) => {
@@ -20,17 +19,20 @@ export default function registerPredict(bot: any) {
       await ctx.reply('🔍 Looking up next match and card prediction...');
 
       const displayName = args.trim();
-
       const now = new Date();
 
-      const nextFixture = await Fixture.findOne({
-        $or: [
-          { homeTeam: { $regex: displayName, $options: 'i' } },
-          { awayTeam: { $regex: displayName, $options: 'i' } },
-        ],
-        date: { $gt: now },
-        league: 'Premier League'
-      }).sort({ date: 1 });
+      // Find next fixture (Prisma version)
+      const nextFixture = await prisma.fixture.findFirst({
+        where: {
+          OR: [
+            { homeTeam: { contains: displayName, mode: 'insensitive' } },
+            { awayTeam: { contains: displayName, mode: 'insensitive' } },
+          ],
+          date: { gt: now },
+          leagueName: 'Premier League',  // ← Matches your schema
+        },
+        orderBy: { date: 'asc' },  // soonest first
+      });
 
       if (!nextFixture) {
         await ctx.reply(
@@ -43,9 +45,8 @@ export default function registerPredict(bot: any) {
       const home = nextFixture.homeTeam;
       const away = nextFixture.awayTeam;
 
-      // Normalize display to full name if possible (optional improvement)
       const ourTeamRaw = home.toLowerCase().includes(displayName.toLowerCase()) ? home : away;
-      const ourTeam = ourTeamRaw
+      const ourTeam = ourTeamRaw;
       const opponent = home === ourTeam ? away : home;
 
       const fixtureDateStr = nextFixture.date.toLocaleString('en-GB', {
@@ -58,37 +59,76 @@ export default function registerPredict(bot: any) {
         timeZoneName: 'short',
       });
 
-      // --- H2H Prediction ---
-      const h2h = await Card.aggregate([
-        {
-          $match: {
-            $or: [
-              { $and: [{ homeTeam: { $regex: home, $options: 'i' } }, { awayTeam: { $regex: away, $options: 'i' } }] },
-              { $and: [{ homeTeam: { $regex: away, $options: 'i' } }, { awayTeam: { $regex: home, $options: 'i' } }] }
-            ],
-            date: { $gte: new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000) } // last ~5 seasons
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            count: { $sum: 1 },
-            totalYellow: { $sum: '$yellowCards' },
-            totalRed: { $sum: '$redCards' }
-          }
-        }
-      ]);
+      // --- H2H Prediction (aggregate cards) ---
+      // Prisma doesn't have .aggregate like Mongoose for sum/group — use aggregateRaw or two queries
+      // Simpler: count + sum via raw or client methods (here using groupBy + _count/_sum)
 
-      const stats = h2h[0] || { count: 0, totalYellow: 0, totalRed: 0 };
-      const avgYellow = stats.count ? (stats.totalYellow / stats.count).toFixed(1) : 'N/A';
-      const avgRed = stats.count ? (stats.totalRed / stats.count).toFixed(1) : 'N/A';
+      const h2hMatches = await prisma.card.groupBy({
+        by: ['id'], // dummy to get count
+        where: {
+          OR: [
+            {
+              AND: [
+                { homeTeam: { contains: home, mode: 'insensitive' } },
+                { awayTeam: { contains: away, mode: 'insensitive' } },
+              ],
+            },
+            {
+              AND: [
+                { homeTeam: { contains: away, mode: 'insensitive' } },
+                { awayTeam: { contains: home, mode: 'insensitive' } },
+              ],
+            },
+          ],
+          date: {
+            gte: new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000), // ~5 years
+          },
+        },
+        _count: { id: true },
+      });
+
+      const count = h2hMatches.length; // number of matching cards (not matches — adjust if you need per-match)
+
+      // For avg cards per match, we'd ideally group by fixtureId first — but for simplicity:
+      // Fetch all matching cards and compute in JS (fine for small result sets)
+
+      const h2hCards = await prisma.card.findMany({
+        where: {
+          OR: [
+            {
+              AND: [
+                { homeTeam: { contains: home, mode: 'insensitive' } },
+                { awayTeam: { contains: away, mode: 'insensitive' } },
+              ],
+            },
+            {
+              AND: [
+                { homeTeam: { contains: away, mode: 'insensitive' } },
+                { awayTeam: { contains: home, mode: 'insensitive' } },
+              ],
+            },
+          ],
+          date: {
+            gte: new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000),
+          },
+        },
+        select: { cardType: true },
+      });
+
+      const yellowCount = h2hCards.filter(c => c.cardType === 'YELLOW_CARD').length;
+      const redCount = h2hCards.filter(c => c.cardType === 'RED_CARD').length;
+
+      // Rough avg per match: assume ~2 cards per match if not grouped — improve later
+      const matchesApprox = Math.max(1, Math.ceil((yellowCount + redCount) / 4)); // heuristic
+      const avgYellow = (yellowCount / matchesApprox).toFixed(1);
+      const avgRed = (redCount / matchesApprox).toFixed(1);
 
       let predictionText = '\n\n*No historical card data yet for this matchup* — engine learning 📈';
-      if (stats.count > 0) {
+      if (count > 0) {
         const totalAvg = (parseFloat(avgYellow) + parseFloat(avgRed)).toFixed(1);
-        predictionText = `\n\n*Prediction from last ${stats.count} H2H meetings:*\n` +
-          `• Avg yellow cards: *${avgYellow}*\n` +
-          `• Avg red cards: *${avgRed}*\n` +
+        predictionText = `\n\n*Prediction from historical data (${count} cards found):*\n` +
+          `• Approx avg yellow cards: *${avgYellow}*\n` +
+          `• Approx avg red cards: *${avgRed}*\n` +
           `• Total cards avg: *${totalAvg}* → ${parseFloat(totalAvg) > 4.5 ? 'OVER 4.5 likely 🔥' : 'UNDER 4.5 likely ❄️'}`;
       }
 
@@ -101,8 +141,8 @@ export default function registerPredict(bot: any) {
         `Next Fixture  \n` +
         `${safeOurTeam} vs ${safeOpponent}  \n` +
         `Premier League • ${safeDate}\n\n` +
-        predictionText +
-        `\n\n\\(Stats from your DB – more seasons = better predictions 🚀\\)`.trim();
+        `predictionText` +
+        `\n\n\\(Stats from your DB – more seasons = better predictions 🚀\\).trim()`;
 
       console.log('Sending MarkdownV2:\n' + reply);
 

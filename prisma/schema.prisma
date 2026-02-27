@@ -46,7 +46,7 @@ model Card {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  @@unique([fixtureId, player])
+  @@unique([fixtureId, player, minute])
   @@index([leagueId, matchday, date(sort: Desc)])
   @@index([team, leagueId, matchday])
   @@index([homeTeam, leagueId])
