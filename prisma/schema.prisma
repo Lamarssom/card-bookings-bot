@@ -1,0 +1,55 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CardType {
+  YELLOW_CARD
+  RED_CARD
+}
+
+model Fixture {
+  id         Int      @id @default(autoincrement())
+  homeTeam   String
+  awayTeam   String
+  date       DateTime
+  leagueId   Int?
+  leagueName String?
+  round      String?
+  status     String   @default("SCHEDULED")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([homeTeam, awayTeam, date])
+  // No additional indexes needed unless queries require them; add if perf issues arise
+}
+
+model Card {
+  id         Int      @id @default(autoincrement())
+  fixtureId  Int
+  match      String
+  leagueId   Int?
+  leagueName String?
+  date       DateTime
+  homeTeam   String?
+  awayTeam   String?
+  team       String
+  player     String
+  cardType   CardType
+  minute     Int
+  extraTime  Int?
+  matchday   Int?
+  timestamp  DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([fixtureId, player])
+  @@index([leagueId, matchday, date(sort: Desc)])
+  @@index([team, leagueId, matchday])
+  @@index([homeTeam, leagueId])
+  @@index([awayTeam, leagueId])
+  @@index([date(sort: Desc)])
+}

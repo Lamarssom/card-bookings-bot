@@ -1,11 +1,8 @@
-// scripts/importFixtures.ts
 import 'dotenv/config';
 import fs from 'fs';
 import csv from 'csv-parser';
 import path from 'path';
-import { Fixture } from '../models/Fixture';
-import mongoose from 'mongoose';
-import { config } from '../config';
+import { prisma } from '../db'; // Adjust path if needed
 import { parse } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 
@@ -17,10 +14,11 @@ function normalizeTeamName(name: string): string {
 }
 
 async function importAllFixtures() {
-  await mongoose.connect(config.mongoUri);
-  console.log(`Connected to: ${mongoose.connection.db!.databaseName}`);
+  await prisma.$connect();
+  console.log('Connected to PostgreSQL');
 
-  await Fixture.deleteMany({ league: 'Premier League' });
+  // Clear existing Premier League fixtures (equivalent to deleteMany)
+  await prisma.fixture.deleteMany({ where: { leagueName: 'Premier League' } });
   console.log('Cleared existing Premier League fixtures');
 
   const fixturesDir = path.join(__dirname, '../data/fixtures');
@@ -35,12 +33,11 @@ async function importAllFixtures() {
 
     const results: any[] = [];
 
-    // Read CSV
+    // Read CSV (same as before)
     await new Promise<void>((resolve, reject) => {
       fs.createReadStream(filePath)
         .pipe(csv())
         .on('data', (row: any) => {
-          // ... your existing parsing logic ...
           const dateTimeStrTrim = (row.Date || row['Date/Time'] || '').trim();
 
           if (!row['Home Team'] || !row['Away Team'] || !dateTimeStrTrim) {
@@ -61,7 +58,7 @@ async function importAllFixtures() {
             homeTeam: normalizeTeamName(row['Home Team']),
             awayTeam: normalizeTeamName(row['Away Team']),
             date: parsedUTC,
-            league: 'Premier League',
+            leagueName: 'Premier League', // Adjusted from 'league' to match schema
             round: row['Round Number'] || row.Round || '',
           });
         })
@@ -69,23 +66,40 @@ async function importAllFixtures() {
         .on('error', reject);
     });
 
-    // Now bulk upsert all at once (faster + waits properly)
+    // Bulk upsert via transaction (Prisma doesn't have native bulk upsert, so use loop in transaction)
     if (results.length > 0) {
-      const operations = results.map(fix => ({
-        updateOne: {
-          filter: { homeTeam: fix.homeTeam, awayTeam: fix.awayTeam, date: fix.date },
-          update: { $set: fix },
-          upsert: true
-        }
-      }));
+      await prisma.$transaction(async (tx: {
+          fixture: {
+            upsert: (arg0: {
+              where: {
+                homeTeam_awayTeam_date: { // Matches @@unique
+                  homeTeam: any; awayTeam: any; date: any;
+                };
+              }; update: any; create: any;
+            }) => any;
+          };
+        }) => {
+        let matched = 0;
+        let upserted = 0;
 
-      try {
-        const bulkResult = await Fixture.bulkWrite(operations, { ordered: false });
-        totalImported += bulkResult.matchedCount + bulkResult.upsertedCount;
-        console.log(`Bulk upsert: matched ${bulkResult.matchedCount}, upserted ${bulkResult.upsertedCount}, modified ${bulkResult.modifiedCount}`);
-      } catch (e: any) {
-        console.error(`Bulk write error in ${file}:`, e.message);
-      }
+        for (const fix of results) {
+          const result = await tx.fixture.upsert({
+            where: {
+              homeTeam_awayTeam_date: { // Matches @@unique
+                homeTeam: fix.homeTeam,
+                awayTeam: fix.awayTeam,
+                date: fix.date,
+              },
+            },
+            update: fix,
+            create: fix,
+          });
+          if (result) upserted++; // Simplistic count; adjust if needed
+        }
+
+        totalImported += upserted;
+        console.log(`Bulk upsert: matched ${matched}, upserted ${upserted}, modified ?`); // Matched/modified not directly available
+      });
     }
 
     console.log(`Processed ${file}: ${results.length} parsed, total imported so far: ${totalImported}`);
@@ -93,9 +107,8 @@ async function importAllFixtures() {
 
   console.log(`\n=== FINAL SUMMARY ===\nTotal fixtures imported: ${totalImported}\nTotal rows skipped: ${totalSkipped}`);
 
-  // Disconnect ONLY after everything
-  await mongoose.disconnect();
-  console.log('Disconnected from MongoDB');
+  await prisma.$disconnect();
+  console.log('Disconnected from PostgreSQL');
   process.exit(0);
 }
 

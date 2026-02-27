@@ -1,16 +1,28 @@
-import mongoose from 'mongoose';
-import dotenv from 'dotenv';
+// src/db.ts
+import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
 
-dotenv.config();
+const connectionString = process.env.DATABASE_URL;
 
-const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/cardbookings';
+if (!connectionString) {
+  throw new Error('DATABASE_URL is not set in .env');
+}
+
+const pool = new Pool({ connectionString });
+const adapter = new PrismaPg(pool);
+
+export const prisma = new PrismaClient({
+  adapter,
+  // Optional: log: ['query', 'info', 'warn', 'error'] for debugging
+});
 
 export async function connectDB() {
   try {
-    await mongoose.connect(mongoUri);
-    console.log('MongoDB connected successfully! 📦');
+    await prisma.$connect();
+    console.log('PostgreSQL connected successfully via adapter! 📦');
   } catch (err) {
-    console.error('MongoDB connection error:', err);
+    console.error('PostgreSQL connection error:', err);
     process.exit(1);
   }
 }
