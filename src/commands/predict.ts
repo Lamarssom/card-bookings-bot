@@ -1,8 +1,8 @@
 // src/commands/predict.ts
 import { Context } from 'telegraf';
 import { escapeMarkdownV2 } from '../utils';
-import { Fixture } from '../models/Fixture';
-import { Card } from '../models/Card';
+import { Fixture } from '@prisma/client';
+import { Card } from '@prisma/client';
 
 export default function registerPredict(bot: any) {
   bot.command('predict', async (ctx: Context) => {

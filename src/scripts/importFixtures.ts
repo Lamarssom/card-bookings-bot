@@ -66,40 +66,47 @@ async function importAllFixtures() {
         .on('error', reject);
     });
 
-    // Bulk upsert via transaction (Prisma doesn't have native bulk upsert, so use loop in transaction)
+    // Bulk upsert in smaller batches without one giant transaction
     if (results.length > 0) {
-      await prisma.$transaction(async (tx: {
-          fixture: {
-            upsert: (arg0: {
+      const BATCH_SIZE = 100; // Tune: 50–200; larger = fewer roundtrips, but riskier if one fails
+      let upsertedCount = 0;
+
+      for (let i = 0; i < results.length; i += BATCH_SIZE) {
+        const batch = results.slice(i, i + BATCH_SIZE);
+        console.log(`  Upserting batch ${i / BATCH_SIZE + 1} (${batch.length} records)...`);
+
+        const batchPromises = batch.map(async (fix) => {
+          try {
+            await prisma.fixture.upsert({
               where: {
-                homeTeam_awayTeam_date: { // Matches @@unique
-                  homeTeam: any; awayTeam: any; date: any;
-                };
-              }; update: any; create: any;
-            }) => any;
-          };
-        }) => {
-        let matched = 0;
-        let upserted = 0;
-
-        for (const fix of results) {
-          const result = await tx.fixture.upsert({
-            where: {
-              homeTeam_awayTeam_date: { // Matches @@unique
-                homeTeam: fix.homeTeam,
-                awayTeam: fix.awayTeam,
-                date: fix.date,
+                homeTeam_awayTeam_date: {
+                  homeTeam: fix.homeTeam,
+                  awayTeam: fix.awayTeam,
+                  date: fix.date,
+                },
               },
-            },
-            update: fix,
-            create: fix,
-          });
-          if (result) upserted++; // Simplistic count; adjust if needed
-        }
+              update: fix,
+              create: fix,
+            });
+            return true; // success
+          } catch (err) {
+            console.error(`Upsert failed for ${fix.homeTeam} vs ${fix.awayTeam} on ${fix.date}:`, err);
+            return false;
+          }
+        });
 
-        totalImported += upserted;
-        console.log(`Bulk upsert: matched ${matched}, upserted ${upserted}, modified ?`); // Matched/modified not directly available
-      });
+        // Wait for batch to complete (parallel within batch)
+        const resultsBatch = await Promise.allSettled(batchPromises);
+        const successful = resultsBatch.filter(r => r.status === 'fulfilled' && r.value).length;
+        upsertedCount += successful;
+
+        // Optional: small delay if you're hitting connection limits
+        // await new Promise(r => setTimeout(r, 200));
+      }
+
+      totalImported += upsertedCount;
+      console.log(`Bulk upsert: upserted ≈ ${upsertedCount} (some may have been matches/updates)`);
+
     }
 
     console.log(`Processed ${file}: ${results.length} parsed, total imported so far: ${totalImported}`);

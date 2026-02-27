@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Card } from '../models/Card';
+import { Card } from '@prisma/client';
 import { config } from '../config';
 
 export async function saveCardsFromFixture(fixture: any, events: any[]) {

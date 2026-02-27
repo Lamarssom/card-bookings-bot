@@ -3,7 +3,7 @@ import { Stage } from 'telegraf/scenes';
 import dotenv from 'dotenv';
 import { connectDB } from './db';
 import { escapeMarkdownV2 } from './utils';
-import { Card } from './models/Card';
+import { Card } from '@prisma/client';
 import type { BotContext, BotSession } from './types';
 
 // Command registrars
