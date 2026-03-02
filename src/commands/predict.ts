@@ -69,10 +69,10 @@ export default function registerPredict(bot: any) {
 
       console.log('Escaped date for MD:', safeDate);
 
-      // --- H2H Prediction (aggregate cards) ---
+      // --- H2H Prediction (now from Fixture aggregates) ---
+      const fiveYearsAgo = new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000);
 
-      const h2hMatches = await prisma.card.groupBy({
-        by: ['id'], // dummy to get count
+      const h2hFixtures = await prisma.fixture.findMany({
         where: {
           OR: [
             {
@@ -88,54 +88,23 @@ export default function registerPredict(bot: any) {
               ],
             },
           ],
-          date: {
-            gte: new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000), // ~5 years
-          },
+          date: { gte: fiveYearsAgo, lt: now },
+          leagueName: 'Premier League',
         },
-        _count: { id: true },
       });
 
-      const count = h2hMatches.length; // number of matching cards
-
-      // Fetch all matching cards and compute in JS
-
-      const h2hCards = await prisma.card.findMany({
-        where: {
-          OR: [
-            {
-              AND: [
-                { homeTeam: { contains: home, mode: 'insensitive' } },
-                { awayTeam: { contains: away, mode: 'insensitive' } },
-              ],
-            },
-            {
-              AND: [
-                { homeTeam: { contains: away, mode: 'insensitive' } },
-                { awayTeam: { contains: home, mode: 'insensitive' } },
-              ],
-            },
-          ],
-          date: {
-            gte: new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000),
-          },
-        },
-        select: { cardType: true },
-      });
-
-      const yellowCount = h2hCards.filter(c => c.cardType === 'YELLOW_CARD').length;
-      const redCount = h2hCards.filter(c => c.cardType === 'RED_CARD').length;
-
-      // Rough avg per match: assume ~2 cards per match if not grouped — improve later
-      const matchesApprox = Math.max(1, Math.ceil((yellowCount + redCount) / 4)); // heuristic
-      const avgYellow = (yellowCount / matchesApprox).toFixed(1);
-      const avgRed = (redCount / matchesApprox).toFixed(1);
+      const matchCount = h2hFixtures.length;
+      const totalYellow = h2hFixtures.reduce((sum, f) => sum + (f.homeYellowCards  0) + (f.awayYellowCards  0), 0);
+      const totalRed = h2hFixtures.reduce((sum, f) => sum + (f.homeRedCards  0) + (f.awayRedCards  0), 0);
 
       let predictionText = '\n\n*No historical card data yet for this matchup* — engine learning 📈';
-      if (count > 0) {
+      if (matchCount > 0) {
+        const avgYellow = (totalYellow / matchCount).toFixed(1);
+        const avgRed = (totalRed / matchCount).toFixed(1);
         const totalAvg = (parseFloat(avgYellow) + parseFloat(avgRed)).toFixed(1);
-        predictionText = `\n\n*Prediction from historical data (${count} cards found):*\n` +
-          `• Approx avg yellow cards: *${avgYellow}*\n` +
-          `• Approx avg red cards: *${avgRed}*\n` +
+        predictionText = `\n\n*Prediction from last ${matchCount} H2H meetings:*\n` +
+          `• Avg yellow cards: *${avgYellow}*\n` +
+          `• Avg red cards: *${avgRed}*\n` +
           `• Total cards avg: *${totalAvg}* → ${parseFloat(totalAvg) > 4.5 ? 'OVER 4.5 likely 🔥' : 'UNDER 4.5 likely ❄️'}`;
       }
 

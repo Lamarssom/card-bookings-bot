@@ -22,9 +22,13 @@ model Fixture {
   status     String   @default("SCHEDULED")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  
+  homeYellowCards Int?     @default(0)
+  awayYellowCards Int?     @default(0)
+  homeRedCards    Int?     @default(0)
+  awayRedCards    Int?     @default(0)
 
   @@unique([homeTeam, awayTeam, date])
-  // No additional indexes needed unless queries require them; add if perf issues arise
 }
 
 model Card {
