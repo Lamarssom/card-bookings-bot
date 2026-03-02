@@ -88,20 +88,23 @@ export default function registerPredict(bot: any) {
               ],
             },
           ],
-          date: { gte: fiveYearsAgo, lt: now },
+          date: { gte: fiveYearsAgo, lt: now },  // Past matches only
           leagueName: 'Premier League',
         },
+        // Optional: orderBy: { date: 'desc' } if you want most recent first
       });
 
       const matchCount = h2hFixtures.length;
-      const totalYellow = h2hFixtures.reduce((sum, f) => sum + (f.homeYellowCards  0) + (f.awayYellowCards  0), 0);
-      const totalRed = h2hFixtures.reduce((sum, f) => sum + (f.homeRedCards  0) + (f.awayRedCards  0), 0);
+      const totalYellow = h2hFixtures.reduce((sum, f) => sum + (f.homeYellowCards || 0) + (f.awayYellowCards || 0), 0);
+      const totalRed   = h2hFixtures.reduce((sum, f) => sum + (f.homeRedCards  || 0) + (f.awayRedCards   || 0), 0);
 
       let predictionText = '\n\n*No historical card data yet for this matchup* — engine learning 📈';
+
       if (matchCount > 0) {
         const avgYellow = (totalYellow / matchCount).toFixed(1);
-        const avgRed = (totalRed / matchCount).toFixed(1);
+        const avgRed   = (totalRed   / matchCount).toFixed(1);
         const totalAvg = (parseFloat(avgYellow) + parseFloat(avgRed)).toFixed(1);
+
         predictionText = `\n\n*Prediction from last ${matchCount} H2H meetings:*\n` +
           `• Avg yellow cards: *${avgYellow}*\n` +
           `• Avg red cards: *${avgRed}*\n` +
