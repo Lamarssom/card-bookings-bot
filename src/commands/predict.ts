@@ -29,9 +29,9 @@ export default function registerPredict(bot: any) {
             { awayTeam: { contains: displayName, mode: 'insensitive' } },
           ],
           date: { gt: now },
-          leagueName: 'Premier League',  // ← Matches your schema
+          leagueName: 'Premier League',
         },
-        orderBy: { date: 'asc' },  // soonest first
+        orderBy: { date: 'asc' },
       });
 
       if (!nextFixture) {
@@ -59,9 +59,10 @@ export default function registerPredict(bot: any) {
         timeZoneName: 'short',
       });
 
+      console.log('Raw fixture date:', fixtureDateStr);
+      console.log('Escaped date for MD:', safeDate);
+
       // --- H2H Prediction (aggregate cards) ---
-      // Prisma doesn't have .aggregate like Mongoose for sum/group — use aggregateRaw or two queries
-      // Simpler: count + sum via raw or client methods (here using groupBy + _count/_sum)
 
       const h2hMatches = await prisma.card.groupBy({
         by: ['id'], // dummy to get count
@@ -87,10 +88,9 @@ export default function registerPredict(bot: any) {
         _count: { id: true },
       });
 
-      const count = h2hMatches.length; // number of matching cards (not matches — adjust if you need per-match)
+      const count = h2hMatches.length; // number of matching cards
 
-      // For avg cards per match, we'd ideally group by fixtureId first — but for simplicity:
-      // Fetch all matching cards and compute in JS (fine for small result sets)
+      // Fetch all matching cards and compute in JS
 
       const h2hCards = await prisma.card.findMany({
         where: {
@@ -136,13 +136,22 @@ export default function registerPredict(bot: any) {
       const safeOurTeam = escapeMarkdownV2(ourTeam);
       const safeOpponent = escapeMarkdownV2(opponent);
       const safeDate = escapeMarkdownV2(fixtureDateStr);
+      const safeDisplay = escapeMarkdownV2(displayName);
 
-      const reply = `*Card Booking Prediction* – ${escapeMarkdownV2(displayName)}\n\n` +
+      let safePrediction = predictionText;
+      if (count > 0) {
+        safePrediction = predictionText;
+      } else {
+        safePrediction = escapeMarkdownV2(predictionText);
+      }
+
+      const reply = 
+        `*Card Booking Prediction* – ${safeDisplay}\n\n` +
         `Next Fixture  \n` +
         `${safeOurTeam} vs ${safeOpponent}  \n` +
         `Premier League • ${safeDate}\n\n` +
-        `predictionText` +
-        `\n\n\\(Stats from your DB – more seasons = better predictions 🚀\\).trim()`;
+        `${safePrediction}\n\n` +
+        `\\(Stats from your DB – more seasons = better predictions 🚀\\)`;
 
       console.log('Sending MarkdownV2:\n' + reply);
 
