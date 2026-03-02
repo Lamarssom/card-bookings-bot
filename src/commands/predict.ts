@@ -27,8 +27,8 @@ export default function registerPredict(bot: any) {
       const nextFixture = await prisma.fixture.findFirst({
         where: {
           OR: [
-            { homeTeam: { contains: displayName, mode: 'insensitive' } },
-            { awayTeam: { contains: displayName, mode: 'insensitive' } },
+            { homeTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
+            { awayTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
           ],
           date: { gt: now },
           leagueName: 'Premier League',
