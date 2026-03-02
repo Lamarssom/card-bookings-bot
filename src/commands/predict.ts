@@ -60,6 +60,13 @@ export default function registerPredict(bot: any) {
       });
 
       console.log('Raw fixture date:', fixtureDateStr);
+
+      // Escape dynamic parts
+      const safeOurTeam = escapeMarkdownV2(ourTeam);
+      const safeOpponent = escapeMarkdownV2(opponent);
+      const safeDate = escapeMarkdownV2(fixtureDateStr);
+      const safeDisplay = escapeMarkdownV2(displayName);
+
       console.log('Escaped date for MD:', safeDate);
 
       // --- H2H Prediction (aggregate cards) ---
@@ -132,18 +139,10 @@ export default function registerPredict(bot: any) {
           `• Total cards avg: *${totalAvg}* → ${parseFloat(totalAvg) > 4.5 ? 'OVER 4.5 likely 🔥' : 'UNDER 4.5 likely ❄️'}`;
       }
 
-      // Escape dynamic parts
-      const safeOurTeam = escapeMarkdownV2(ourTeam);
-      const safeOpponent = escapeMarkdownV2(opponent);
-      const safeDate = escapeMarkdownV2(fixtureDateStr);
-      const safeDisplay = escapeMarkdownV2(displayName);
-
       let safePrediction = predictionText;
-      if (count > 0) {
-        safePrediction = predictionText;
-      } else {
-        safePrediction = escapeMarkdownV2(predictionText);
-      }
+      
+      const footerRaw = "Stats from your DB - more seaesons = better predicions 🚀"
+      const safeFooter = escapeMarkdownV2(footerRaw);
 
       const reply = 
         `*Card Booking Prediction* – ${safeDisplay}\n\n` +
@@ -151,7 +150,7 @@ export default function registerPredict(bot: any) {
         `${safeOurTeam} vs ${safeOpponent}  \n` +
         `Premier League • ${safeDate}\n\n` +
         `${safePrediction}\n\n` +
-        `\\(Stats from your DB – more seasons = better predictions 🚀\\)`;
+        `\\(${safeFooter}\\)`;
 
       console.log('Sending MarkdownV2:\n' + reply);
 
