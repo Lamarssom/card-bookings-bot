@@ -21,6 +21,8 @@ export default function registerPredict(bot: any) {
       const displayName = args.trim();
       const now = new Date();
 
+      const normalizedDisplay = normalizedTeamName(displayName);
+
       // Find next fixture (Prisma version)
       const nextFixture = await prisma.fixture.findFirst({
         where: {

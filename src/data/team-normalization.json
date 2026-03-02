@@ -1,5 +1,6 @@
 {
   "Man Utd": "Manchester United",
+  "Man United": "Manchester United",
   "Man City": "Manchester City",
   "Nott'm Forest": "Nottingham Forest",
   "Spurs": "Tottenham Hotspur",
@@ -8,6 +9,17 @@
   "Newcastle": "Newcastle United",
   "Brighton": "Brighton & Hove Albion",
   "West Ham": "West Ham United",
-  "Burnley": "Burnley FC",
-  "Brentford": "Brentford FC"
+  "Burnley": "Burnley",
+  "Brentford": "Brentford",
+  "Sheffield United": "Sheffield United",
+  "West Brom": "West Bromwich Albion",
+  "Fulham": "Fulham",
+  "Crystal Palace": "Crystal Palace",
+  "Everton": "Everton",
+  "Arsenal": "Arsenal",
+  "Chelsea": "Chelsea",
+  "Liverpool": "Liverpool",
+  "Aston Villa": "Aston Villa",
+  "Southampton": "Southampton",
+  "Leeds": "Leeds United"
 }
