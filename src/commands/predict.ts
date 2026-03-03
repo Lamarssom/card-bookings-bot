@@ -21,14 +21,13 @@ export default function registerPredict(bot: any) {
       const displayName = args.trim();
       const now = new Date();
 
-      const normalizedDisplay = normalizedTeamName(displayName);
 
       // Find next fixture (Prisma version)
       const nextFixture = await prisma.fixture.findFirst({
         where: {
           OR: [
-            { homeTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
-            { awayTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
+            { homeTeam: { contains: displayName, mode: 'insensitive' } },
+            { awayTeam: { contains: displayName, mode: 'insensitive' } },
           ],
           date: { gt: now },
           leagueName: 'Premier League',
@@ -47,7 +46,7 @@ export default function registerPredict(bot: any) {
       const home = nextFixture.homeTeam;
       const away = nextFixture.awayTeam;
 
-      const ourTeamRaw = home.toLowerCase().includes(displayName.toLowerCase()) ? home : away;
+      const ourTeamRaw = home.toLowerCase().includes(normalizedDisplay.toLowerCase()) ? home : away;
       const ourTeam = ourTeamRaw;
       const opponent = home === ourTeam ? away : home;
 
