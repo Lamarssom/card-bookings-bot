@@ -17,6 +17,10 @@ async function importAllFixtures() {
   await prisma.$connect();
   console.log('Connected to PostgreSQL');
 
+  // Clear Old Data
+  await prisma.fixture.deleteMany({ where: { leagueName: 'Premier League' } });
+  console.log('Cleared existing Premier League fixtures');
+
   const fixturesDir = path.join(__dirname, '../data/fixtures');
   const files = fs.readdirSync(fixturesDir).filter(f => f.endsWith('.csv'));
 
