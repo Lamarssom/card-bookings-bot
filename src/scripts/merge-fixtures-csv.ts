@@ -111,7 +111,28 @@ async function run() {
     })),
   ];
 
-  // 4. Write
+  // 4. Sort fixtures by Dte then Time
+  merged.sort((a, b) => {
+      const parseDate = (d: string) => {
+        if (!d) return new Date(0);
+        const [dd, mm, yyyy] = d.split('/').map(Number);
+        return new Date(yyyy, mm - 1, dd);
+    };
+
+    const dateA = parseDate(a.Date);
+    const dateB = parseDate(b.Date);
+
+    if (dateA < dateB) return -1;
+    if (dateA > dateB) return 1;
+
+    // same date → compare time (HH:mm)
+    const timeA = a.Time || '00:00';
+    const timeB = b.Time || '00:00';
+    return timeA.localeCompare(timeB);
+
+  });
+
+  // 5. Write
   await csvWriter.writeRecords(merged);
   console.log(`Done! Merged file written to:\n${OUTPUT_PATH}`);
 }
