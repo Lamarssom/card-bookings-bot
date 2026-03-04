@@ -9,7 +9,7 @@ import type { BotContext, BotSession } from './types';
 
 // Command registrars
 import registerPredict from './commands/predict';
-import registerRefresh from './commands/refresh';
+//import registerRefresh from './commands/refresh';
 import registerRecentCards from './commands/recentcards';
 // import registerTestApf from './commands/testapf'; // uncomment if needed
 import teamCardsWizard from './scenes/teamcardsScene';
@@ -51,7 +51,7 @@ bot.help((ctx) => ctx.reply('Commands: /start, /refresh, /recentcards, /teamcard
 
 bot.command('ping', (ctx) => ctx.reply('Pong!'));
 
-registerRefresh(bot);
+//registerRefresh(bot);
 registerRecentCards(bot);
 registerPredict(bot);
 // registerTestApf(bot); // keep commented unless needed

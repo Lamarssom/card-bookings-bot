@@ -3,8 +3,6 @@ import { escapeMarkdownV2 } from '../utils';
 import { prisma } from '../db';
 import { Fixture } from '@prisma/client';
 import path from 'path';
-import { getTeamIdFromApi } from '../services/teamLookup';
-import { getNextFixtureForTeam } from '../services/apiFootball';
 
 // Normalization (shared logic)
 const teamNameMap = JSON.parse(require('fs').readFileSync(path.join(__dirname, '../data/team-normalization.json'), 'utf-8'));
@@ -40,22 +38,6 @@ export default function registerPredict(bot: any) {
       let home = '';
       let away = '';
       let fixtureDate: Date | null = null;
-
-      try {
-        const teamId = await getTeamIdFromApi(normalizedDisplay);
-        if (teamId) {
-          nextFixtureApi = await getNextFixtureForTeam(teamId);
-          if (nextFixtureApi) {
-            home = normalizeTeamName(nextFixtureApi.teams.home.name);
-            away = normalizeTeamName(nextFixtureApi.teams.away.name);
-            fixtureDate = new Date(nextFixtureApi.fixture.date);
-            console.log(`API success → Next fixture: ${home} vs ${away} on ${fixtureDate.toISOString()}`);
-          }
-        }
-      } catch (apiErr: any) {
-        console.warn('API-Football failed:', apiErr.message);
-        // Continue to DB fallback
-      }
 
       // ── Step 2: If API failed, fall back to DB search (old behavior) ──
       let nextFixtureDb: Fixture | null = null;
@@ -148,10 +130,10 @@ export default function registerPredict(bot: any) {
         predictionText = `\n\n*Prediction from last ${matchCount} H2H meetings:*\n` +
           `• Avg yellow cards: *${avgYellow}*\n` +
           `• Avg red cards: *${avgRed}*\n` +
-          `• Total cards avg: *${totalAvg}* → ${parseFloat(totalAvg) > 4.5 ? 'OVER 4.5 likely 🔥' : 'UNDER 4.5 likely ❄️'}`;
+          `• Total cards avg: *${totalAvg}* → ${parseFloat(totalAvg) > 4.5 ? 'OVER 4.5 likely 📈' : 'UNDER 4.5 likely 📉'}`;
       }
 
-      let safePrediction = predictionText;
+      let safePrediction = escapeMarkdownV2(predictionText);
 
       const footerRaw = "Stats from your DB - more seasons = better predictions 🚀";
       const safeFooter = escapeMarkdownV2(footerRaw);

@@ -1,4 +1,4 @@
-import { Context } from 'telegraf';
+/*import { Context } from 'telegraf';
 import { fetchAndSaveRecentCards } from '../services/apiFootball';
 import { config } from '../config';
 
@@ -133,4 +133,4 @@ export default function registerRefresh(bot: any) {
       await ctx.reply(msg);
     }
   });
-}
+}*/
