@@ -3,13 +3,15 @@ import path from 'path';
 import csv from 'csv-parser';
 import { createObjectCsvWriter } from 'csv-writer';
 
-const CURRENT_DATETIME = new Date('2026-03-04T07:29:00+01:00'); 
-
 const ROOT = process.cwd();
 
 const INPUT_PAST_CSV = path.join(ROOT, 'src/data/fixtures/Epl-2025-2026.csv');
 const INPUT_FIXTURES_CSV = path.join(ROOT, 'src/data/fixtures/epl-2025-GMTStandardTime.csv');
 const OUTPUT_PATH = path.join(ROOT, 'src/data/fixtures/merged-Epl-2025-2026.csv');
+
+// Use current time when script runs (WAT = UTC+1)
+// You can adjust the offset if your server time zone is different
+const CURRENT_DATETIME = new Date(Date.now() + 60 * 60 * 1000); // +1 hour rough WAT adjustment
 
 const HEADER = [
   { id: 'Div', title: 'Div' },
@@ -43,8 +45,22 @@ const csvWriter = createObjectCsvWriter({
   header: HEADER,
 });
 
+// Simple team name normalizer
+const normalizeTeamName = (name: string): string => {
+  if (!name) return '';
+  let n = name.trim();
+
+  // Common variations
+  if (n === 'Man United' || n === 'Man Utd' || n === 'Manchester United') return 'Man United';
+  if (n === 'Tottenham' || n === 'Spurs' || n === 'Tottenham Hotspur') return 'Tottenham';
+  if (n.includes("Nott'm Forest") || n === 'Nottingham Forest') return "Nott'm Forest";
+  if (n === 'Brighton' || n === 'Brighton & Hove Albion') return 'Brighton';
+  if (n === 'Wolves' || n === 'Wolverhampton Wanderers') return 'Wolves';
+
+  return n;
+};
+
 function parseFixtureDateTime(dateStr: string): Date | null {
-  // "15/08/2025 20:00" → split
   const [datePart, timePart] = dateStr.trim().split(/\s+/);
   if (!datePart || !timePart) return null;
 
@@ -59,8 +75,9 @@ function parseFixtureDateTime(dateStr: string): Date | null {
 
 async function run() {
   console.log('Starting CSV merge...');
+  console.log(`Using current time: ${CURRENT_DATETIME.toISOString()} (local)`);
 
-  // 1. Read past matches (Epl-2025-2026.csv)
+  // 1. Read past matches
   const pastRows: any[] = [];
   await new Promise<void>((resolve, reject) => {
     fs.createReadStream(INPUT_PAST_CSV)
@@ -70,9 +87,16 @@ async function run() {
       .on('error', reject);
   });
 
+  // Fix missing Div for past matches
+  pastRows.forEach(row => {
+    if (!row.Div || row.Div.trim() === '') {
+      row.Div = 'E0';
+    }
+  });
+
   console.log(`Loaded ${pastRows.length} past match rows`);
 
-  // 2. Read & process complete fixtures
+  // 2. Read & process future fixtures
   const futureRows: any[] = [];
   await new Promise<void>((resolve, reject) => {
     fs.createReadStream(INPUT_FIXTURES_CSV)
@@ -83,15 +107,14 @@ async function run() {
 
         if (!dt) return;
 
-        // Only future matches (and preferably no result yet)
+        // Only future matches with no result
         if (dt > CURRENT_DATETIME && !row.Result?.trim()) {
           futureRows.push({
             Div: 'E0',
-            Date: fullDate.slice(0, 10),           // "15/08/2025"
-            Time: fullDate.slice(11) || '',        // "20:00"
-            HomeTeam: row['Home Team'] || '',
-            AwayTeam: row['Away Team'] || '',
-            // all other fields empty
+            Date: fullDate.slice(0, 10),
+            Time: fullDate.slice(11) || '',
+            HomeTeam: normalizeTeamName(row['Home Team'] || ''),
+            AwayTeam: normalizeTeamName(row['Away Team'] || ''),
           });
         }
       })
@@ -101,22 +124,30 @@ async function run() {
 
   console.log(`Found ${futureRows.length} future fixtures`);
 
-  // 3. Combine and normalize to match header
+  // 3. Combine and normalize
   const merged = [
     ...pastRows.map(row => ({
-      ...HEADER.reduce((acc, col) => ({ ...acc, [col.id]: row[col.id] || '' }), {} as any),
+      ...HEADER.reduce((acc, col) => ({
+        ...acc,
+        [col.id]: row[col.id] || '',
+      }), {} as any),
+      HomeTeam: normalizeTeamName(row.HomeTeam || row['Home Team'] || ''),
+      AwayTeam: normalizeTeamName(row.AwayTeam || row['Away Team'] || ''),
     })),
     ...futureRows.map(f => ({
-      ...HEADER.reduce((acc, col) => ({ ...acc, [col.id]: f[col.id] || '' }), {} as any),
+      ...HEADER.reduce((acc, col) => ({
+        ...acc,
+        [col.id]: f[col.id] || '',
+      }), {} as any),
     })),
   ];
 
-  // 4. Sort fixtures by Dte then Time
+  // 4. Sort by date then time
   merged.sort((a, b) => {
-      const parseDate = (d: string) => {
-        if (!d) return new Date(0);
-        const [dd, mm, yyyy] = d.split('/').map(Number);
-        return new Date(yyyy, mm - 1, dd);
+    const parseDate = (d: string) => {
+      if (!d) return new Date(0);
+      const [dd, mm, yyyy] = d.split('/').map(Number);
+      return new Date(yyyy, mm - 1, dd);
     };
 
     const dateA = parseDate(a.Date);
@@ -125,16 +156,15 @@ async function run() {
     if (dateA < dateB) return -1;
     if (dateA > dateB) return 1;
 
-    // same date → compare time (HH:mm)
     const timeA = a.Time || '00:00';
     const timeB = b.Time || '00:00';
     return timeA.localeCompare(timeB);
-
   });
 
-  // 5. Write
+  // 5. Write merged file
   await csvWriter.writeRecords(merged);
   console.log(`Done! Merged file written to:\n${OUTPUT_PATH}`);
+  console.log(`Total rows: ${merged.length}`);
 }
 
 run().catch(err => {
