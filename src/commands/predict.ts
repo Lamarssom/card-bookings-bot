@@ -3,8 +3,10 @@ import { escapeMarkdownV2 } from '../utils';
 import { prisma } from '../db';
 import { Fixture } from '@prisma/client';
 import path from 'path';
+import { getTeamIdFromApi } from '../services/teamLookup';
+import { getNextFixtureForTeam } from '../services/apiFootball';
 
-// Import normalization function (shared from import script)
+// Normalization (shared logic)
 const teamNameMap = JSON.parse(require('fs').readFileSync(path.join(__dirname, '../data/team-normalization.json'), 'utf-8'));
 
 function normalizeTeamName(name: string): string {
@@ -29,62 +31,70 @@ export default function registerPredict(bot: any) {
 
       const displayName = args.trim();
       const normalizedDisplay = normalizeTeamName(displayName);
+      console.log(`Normalized user input: "${normalizedDisplay}" from "${displayName}"`);
+
       const now = new Date();
 
-      console.log(`Searching for team containing: "${normalizedDisplay}" (normalized from "${displayName}")`);
+      // ── Step 1: Try to get next fixture from API-Football ──
+      let nextFixtureApi: any = null;
+      let home = '';
+      let away = '';
+      let fixtureDate: Date | null = null;
 
-      const countCheck = await prisma.fixture.count({
-        where: {
-          OR: [
-            { homeTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
-            { awayTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
-          ],
-          leagueName: 'Premier League',
-        },
-      });
-      console.log(`Total fixtures matching name (any date): ${countCheck}`);
+      try {
+        const teamId = await getTeamIdFromApi(normalizedDisplay);
+        if (teamId) {
+          nextFixtureApi = await getNextFixtureForTeam(teamId);
+          if (nextFixtureApi) {
+            home = normalizeTeamName(nextFixtureApi.teams.home.name);
+            away = normalizeTeamName(nextFixtureApi.teams.away.name);
+            fixtureDate = new Date(nextFixtureApi.fixture.date);
+            console.log(`API success → Next fixture: ${home} vs ${away} on ${fixtureDate.toISOString()}`);
+          }
+        }
+      } catch (apiErr: any) {
+        console.warn('API-Football failed:', apiErr.message);
+        // Continue to DB fallback
+      }
 
-      const futureCount = await prisma.fixture.count({
-        where: {
-          OR: [
-            { homeTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
-            { awayTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
-          ],
-          date: { gt: now },
-          leagueName: 'Premier League',
-        },
-      });
-      console.log(`Future fixtures matching name: ${futureCount}`);
+      // ── Step 2: If API failed, fall back to DB search (old behavior) ──
+      let nextFixtureDb: Fixture | null = null;
+      if (!fixtureDate) {
+        nextFixtureDb = await prisma.fixture.findFirst({
+          where: {
+            OR: [
+              { homeTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
+              { awayTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
+            ],
+            date: { gt: now },
+            leagueName: 'Premier League',
+          },
+          orderBy: { date: 'asc' },
+        });
 
-      // Find next fixture using normalized name
-      const nextFixture = await prisma.fixture.findFirst({
-        where: {
-          OR: [
-            { homeTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
-            { awayTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
-          ],
-          date: { gt: now },
-          leagueName: 'Premier League',
-        },
-        orderBy: { date: 'asc' },
-      });
+        if (nextFixtureDb) {
+          home = nextFixtureDb.homeTeam;
+          away = nextFixtureDb.awayTeam;
+          fixtureDate = nextFixtureDb.date;
+          console.log(`DB fallback → Next fixture: ${home} vs ${away} on ${fixtureDate.toISOString()}`);
+        }
+      }
 
-      if (!nextFixture) {
+      // ── If still no fixture (API + DB both failed) ──
+      if (!fixtureDate) {
         await ctx.reply(
-          `No upcoming fixture found for "${displayName}" in the database.\n` +
+          `No upcoming fixture found for "${displayName}" (tried API & DB).\n` +
           'Try exact/short name (e.g. "Man Utd") or check if fixtures are imported correctly.'
         );
         return;
       }
 
-      const home = nextFixture.homeTeam;
-      const away = nextFixture.awayTeam;
-
+      // Determine which team is "ours"
       const ourTeamRaw = home.toLowerCase().includes(normalizedDisplay.toLowerCase()) ? home : away;
       const ourTeam = ourTeamRaw;
       const opponent = home === ourTeam ? away : home;
 
-      const fixtureDateStr = nextFixture.date.toLocaleString('en-GB', {
+      const fixtureDateStr = fixtureDate.toLocaleString('en-GB', {
         weekday: 'long',
         day: 'numeric',
         month: 'long',
@@ -93,7 +103,6 @@ export default function registerPredict(bot: any) {
         minute: '2-digit',
         timeZoneName: 'short',
       });
-
       console.log('Raw fixture date:', fixtureDateStr);
 
       // Escape dynamic parts
@@ -101,10 +110,9 @@ export default function registerPredict(bot: any) {
       const safeOpponent = escapeMarkdownV2(opponent);
       const safeDate = escapeMarkdownV2(fixtureDateStr);
       const safeDisplay = escapeMarkdownV2(displayName);
-
       console.log('Escaped date for MD:', safeDate);
 
-      // --- H2H Prediction (now from Fixture aggregates) ---
+      // ── H2H Prediction from DB ──
       const fiveYearsAgo = new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000);
 
       const h2hFixtures = await prisma.fixture.findMany({
@@ -123,7 +131,7 @@ export default function registerPredict(bot: any) {
               ],
             },
           ],
-          date: { gte: fiveYearsAgo, lt: now },  // Past matches only
+          date: { gte: fiveYearsAgo, lt: fixtureDate },
           leagueName: 'Premier League',
         },
       });
