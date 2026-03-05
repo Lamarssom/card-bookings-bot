@@ -168,26 +168,33 @@ export default function registerPredict(bot: any) {
       const pUnder45 = pUnder35 + poissonProb(expectedCards, 4);
       const pOver45 = 1 - pUnder45;
 
-      // Build rich prediction text
-      let predictionText = `*Expected cards: ${expectedCards.toFixed(1)}*\n\n`;
-      predictionText += `Recommended bets:\n`;
-      predictionText += `• Under 4.5 (${(pUnder45 * 100).toFixed(0)}%) ${pUnder45 > 0.55 ? '❄️ Strong' : '📉 Likely'}\n`;
-      predictionText += `• Over 2.5 (${(pOver25 * 100).toFixed(0)}%) ${pOver25 > 0.70 ? '🔥 Very likely' : '📈 Likely'}\n`;
-      predictionText += `• Under 3.5 (${(pUnder35 * 100).toFixed(0)}%) ${pUnder35 > 0.52 ? '📉' : ''}\n`;
-      predictionText += `• Over 3.5 (${(pOver35 * 100).toFixed(0)}%) ${pOver35 > 0.48 ? '📈' : ''}`;
+      // Build improved prediction text
+      let predictionText = `🟨 Expected cards: ${expectedCards.toFixed(1)}\n\n`;
+      predictionText += `💡 Recommended bets\n`;
+      predictionText += `• Under 4.5 — ${(pUnder45 * 100).toFixed(0)}% ${
+        pUnder45 > 0.70 ? '🔥 Strong' : pUnder45 > 0.55 ? '❄️ Lean' : '👀'
+      }\n`;
+      predictionText += `• Over 2.5 — ${(pOver25 * 100).toFixed(0)}% ${
+        pOver25 > 0.70 ? '🔥 Strong' : pOver25 > 0.55 ? '📈 Lean' : '👀'
+      }\n`;
+      predictionText += `• Under 3.5 — ${(pUnder35 * 100).toFixed(0)}% ${
+        pUnder35 > 0.60 ? '❄️' : ''
+      }\n`;
+      predictionText += `• Over 3.5 — ${(pOver35 * 100).toFixed(0)}% ${
+        pOver35 > 0.60 ? '⚠️ Risky' : ''
+      }`;
 
       const safePrediction = escapeMarkdownV2(predictionText);
 
-      const footerRaw = "Stats from your DB - more seasons = better predictions 🚀";
+      const footerRaw = "Stats from DB - more seasons = better predictions 🚀";
       const safeFooter = escapeMarkdownV2(footerRaw);
 
       const reply = 
-        `*Card Booking Prediction* – ${safeDisplay}\n\n` +
-        `Next Fixture  \n` +
-        `${safeOurTeam} vs ${safeOpponent}  \n` +
-        `Premier League • ${safeDate}\n\n` +
+        `🎯 *Card Booking Prediction* — ${safeDisplay}\n\n` +
+        `🏟 ${safeOurTeam} vs ${safeOpponent}\n` +
+        `📅 Premier League • ${safeDate}\n\n` +
         `${safePrediction}\n\n` +
-        `\\(${safeFooter}\\)`; 
+        `📊 \\(${safeFooter}\\)`;
 
       console.log('Sending MarkdownV2:\n' + reply);
 
