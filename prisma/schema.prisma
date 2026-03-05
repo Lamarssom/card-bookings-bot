@@ -20,6 +20,7 @@ model Fixture {
   leagueName String?
   round      String?
   status     String   @default("SCHEDULED")
+  referee    String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   
@@ -56,4 +57,29 @@ model Card {
   @@index([homeTeam, leagueId])
   @@index([awayTeam, leagueId])
   @@index([date(sort: Desc)])
+}
+
+model RefereeStats {
+  id            Int    @id @default(autoincrement())
+  referee       String @unique
+  matches       Int
+  avgYellow     Float
+  avgRed        Float
+  avgTotalCards Float   // already using 1.5 weighting for reds
+}
+
+model TeamAggression {
+  id              Int    @id @default(autoincrement())
+  team            String @unique
+  yellowPerGame   Float
+  redPerGame      Float
+  aggressionIndex Float   // 1.0 = average, 1.25 = aggressive
+}
+
+model DerbyIntensity {
+  id       Int    @id @default(autoincrement())
+  homeTeam String
+  awayTeam String
+  intensity Float  // 1.0 = normal, 1.35 = high-card derby
+  @@unique([homeTeam, awayTeam])
 }

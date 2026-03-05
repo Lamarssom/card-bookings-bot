@@ -94,10 +94,9 @@ export default function registerPredict(bot: any) {
       const safeDisplay = escapeMarkdownV2(displayName);
       console.log('Escaped date for MD:', safeDate);
 
-      // ── IMPROVED MULTI-LINE PREDICTION ENGINE ──
+      // ── ADVANCED PREDICTION ENGINE ──
       const fiveYearsAgo = new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000);
 
-      // 1. H2H (weighted)
       const h2hFixtures = await prisma.fixture.findMany({
         where: {
           OR: [
@@ -111,34 +110,29 @@ export default function registerPredict(bot: any) {
         take: 12,
       });
 
-      // 2. Home team recent home form
       const homeRecent = await prisma.fixture.findMany({
         where: { homeTeam: { contains: home, mode: 'insensitive' }, date: { gte: fiveYearsAgo }, leagueName: 'Premier League' },
         orderBy: { date: 'desc' },
         take: 10,
       });
 
-      // 3. Away team recent away form
       const awayRecent = await prisma.fixture.findMany({
         where: { awayTeam: { contains: away, mode: 'insensitive' }, date: { gte: fiveYearsAgo }, leagueName: 'Premier League' },
         orderBy: { date: 'desc' },
         take: 10,
       });
 
-      // Calculate weighted average (recent games = higher weight)
       let totalCards = 0;
       let weightSum = 0;
 
-      // H2H 
       h2hFixtures.forEach((f, i) => {
-        const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) + 
+        const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) +
                       ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
-        const weight = 3 * (1 / (i + 1)); // more recent = higher weight
+        const weight = 3 * (1 / (i + 1));
         totalCards += cards * weight;
         weightSum += weight;
       });
 
-      // Home recent (weight 2)
       homeRecent.forEach((f, i) => {
         const cards = (f.homeYellowCards || 0) + ((f.homeRedCards || 0) * 1.5);
         const weight = 2 * (1 / (i + 1));
@@ -146,7 +140,6 @@ export default function registerPredict(bot: any) {
         weightSum += weight;
       });
 
-      // Away recent (weight 2)
       awayRecent.forEach((f, i) => {
         const cards = (f.awayYellowCards || 0) + ((f.awayRedCards || 0) * 1.5);
         const weight = 2 * (1 / (i + 1));
@@ -154,77 +147,96 @@ export default function registerPredict(bot: any) {
         weightSum += weight;
       });
 
-      const expectedCards = weightSum > 0 ? totalCards / weightSum : 4.0;
+      let baseExpected = weightSum > 0 ? totalCards / weightSum : 4.0;
 
-      // Simple Poisson probabilities for common lines
-      const poissonProb = (lambda: number, k: number) => {
-        return (Math.pow(lambda, k) * Math.exp(-lambda)) / factorial(k);
-      };
+      // ── Apply modifiers ──
+      let finalExpected = baseExpected;
+
+      // Referee (only if known)
+      if (nextFixtureDb?.referee) {
+        const refStats = await prisma.refereeStats.findUnique({
+          where: { referee: nextFixtureDb.referee.trim() }
+        });
+        if (refStats && refStats.avgTotalCards > 0) {
+          finalExpected *= (refStats.avgTotalCards / 3.8);
+        }
+      }
+
+      // Team aggression (always)
+      const homeAgg = await prisma.teamAggression.findUnique({ where: { team: home.trim() } });
+      const awayAgg = await prisma.teamAggression.findUnique({ where: { team: away.trim() } });
+      if (homeAgg && awayAgg) {
+        finalExpected *= (homeAgg.aggressionIndex + awayAgg.aggressionIndex) / 2;
+      }
+
+      // Derby intensity (optional)
+      const derby = await prisma.derbyIntensity.findFirst({
+        where: {
+          OR: [
+            { homeTeam: home.trim(), awayTeam: away.trim() },
+            { homeTeam: away.trim(), awayTeam: home.trim() }
+          ]
+        }
+      });
+      if (derby) finalExpected *= derby.intensity;
+
+      // League baseline normalization
+      finalExpected *= 4.1 / 3.8; // current season vs historical avg
+
+      // Poisson using finalExpected
+      const lambda = finalExpected;
+      const poissonProb = (l: number, k: number) => (Math.pow(l, k) * Math.exp(-l)) / factorial(k);
       const factorial = (n: number): number => (n <= 1 ? 1 : n * factorial(n - 1));
 
-      const pUnder25 = poissonProb(expectedCards, 0) + poissonProb(expectedCards, 1) + poissonProb(expectedCards, 2);
+      const pUnder25 = poissonProb(lambda, 0) + poissonProb(lambda, 1) + poissonProb(lambda, 2);
       const pOver25 = 1 - pUnder25;
-      const pUnder35 = pUnder25 + poissonProb(expectedCards, 3);
+      const pUnder35 = pUnder25 + poissonProb(lambda, 3);
       const pOver35 = 1 - pUnder35;
-      const pUnder45 = pUnder35 + poissonProb(expectedCards, 4);
+      const pUnder45 = pUnder35 + poissonProb(lambda, 4);
       const pOver45 = 1 - pUnder45;
 
-      // Build improved prediction text with transparency
+      // Build text using finalExpected
       let predictionText = `📊 Basis of prediction:\n`;
 
-      // 1. H2H average
       const h2hCount = h2hFixtures.length;
       let h2hAvg = '—';
       if (h2hCount > 0) {
         const h2hTotal = h2hFixtures.reduce((sum, f) => 
           sum + (f.homeYellowCards||0) + (f.awayYellowCards||0) + 
-                ((f.homeRedCards||0) * 1.5) + ((f.awayRedCards||0) * 1.5), 0);
+                ((f.homeRedCards||0)*1.5) + ((f.awayRedCards||0)*1.5), 0);
         h2hAvg = (h2hTotal / h2hCount).toFixed(1);
       }
+      predictionText += `• H2H last ${h2hCount || '—'}: ${h2hAvg} weighted cards avg ${h2hCount < 4 ? '(small sample ⚠️)' : ''}\n`;
 
-      predictionText += `• H2H last ${h2hCount || '—'}: ${h2hAvg} cards avg ${
-        h2hCount < 4 ? '(small sample ⚠️)' : ''
-      }\n`;
-
-      // 2. Home team recent home
       const homeCount = homeRecent.length;
       let homeAvg = '—';
       if (homeCount > 0) {
         const homeTotal = homeRecent.reduce((sum, f) => 
-          sum + (f.homeYellowCards||0) + ((f.homeRedCards||0) * 1.5), 0);
+          sum + (f.homeYellowCards||0) + ((f.homeRedCards||0)*1.5), 0);
         homeAvg = (homeTotal / homeCount).toFixed(1);
       }
       predictionText += `• ${home} last ${homeCount || '—'} home: ${homeAvg} cards avg\n`;
 
-      // 3. Away team recent away
       const awayCount = awayRecent.length;
       let awayAvg = '—';
       if (awayCount > 0) {
         const awayTotal = awayRecent.reduce((sum, f) => 
-          sum + (f.awayYellowCards||0) + ((f.awayRedCards||0) * 1.5), 0);
+          sum + (f.awayYellowCards||0) + ((f.awayRedCards||0)*1.5), 0);
         awayAvg = (awayTotal / awayCount).toFixed(1);
       }
       predictionText += `• ${away} last ${awayCount || '—'} away: ${awayAvg} cards avg\n\n`;
 
-      predictionText += `🟨 Expected cards: ${expectedCards.toFixed(1)}\n\n`;
+      predictionText += `🟨 Expected cards: ${finalExpected.toFixed(1)}\n\n`;
 
       predictionText += `💡 Recommended bets\n`;
-      predictionText += `• Under 4.5 — ${(pUnder45 * 100).toFixed(0)}% ${
-        pUnder45 > 0.70 ? '🔥 Most likely' : pUnder45 > 0.55 ? '❄️ Lean' : '👀'
-      }\n`;
-      predictionText += `• Over 2.5 — ${(pOver25 * 100).toFixed(0)}% ${
-        pOver25 > 0.70 ? '🔥 Safe bet' : pOver25 > 0.55 ? '📈 Lean' : '👀'
-      }\n`;
-      predictionText += `• Under 3.5 — ${(pUnder35 * 100).toFixed(0)}% ${
-        pUnder35 > 0.60 ? '❄️' : ''
-      }\n`;
-      predictionText += `• Over 3.5 — ${(pOver35 * 100).toFixed(0)}% ${
-        pOver35 > 0.60 ? '⚠️ Risky' : ''
-      }`;
+      predictionText += `• Under 4.5 — ${(pUnder45 * 100).toFixed(0)}% ${pUnder45 > 0.70 ? '🔥 Most likely' : pUnder45 > 0.55 ? '❄️ Lean' : '👀'}\n`;
+      predictionText += `• Over 2.5 — ${(pOver25 * 100).toFixed(0)}% ${pOver25 > 0.70 ? '🔥 Safe bet' : pOver25 > 0.55 ? '📈 Lean' : '👀'}\n`;
+      predictionText += `• Under 3.5 — ${(pUnder35 * 100).toFixed(0)}% ${pUnder35 > 0.60 ? '❄️' : ''}\n`;
+      predictionText += `• Over 3.5 — ${(pOver35 * 100).toFixed(0)}% ${pOver35 > 0.60 ? '⚠️ Risky' : ''}`;
 
       const safePrediction = escapeMarkdownV2(predictionText);
 
-      const footerRaw = "Stats from DB - more seasons = better predictions 🚀";
+      const footerRaw = "Stats from DB - more seasons = better predictions";
       const safeFooter = escapeMarkdownV2(footerRaw);
 
       const reply = 
