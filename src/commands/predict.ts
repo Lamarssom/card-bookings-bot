@@ -129,9 +129,10 @@ export default function registerPredict(bot: any) {
       let totalCards = 0;
       let weightSum = 0;
 
-      // H2H (weight 3)
+      // H2H 
       h2hFixtures.forEach((f, i) => {
-        const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) + (f.homeRedCards || 0) + (f.awayRedCards || 0);
+        const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) + 
+                      ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
         const weight = 3 * (1 / (i + 1)); // more recent = higher weight
         totalCards += cards * weight;
         weightSum += weight;
@@ -139,7 +140,7 @@ export default function registerPredict(bot: any) {
 
       // Home recent (weight 2)
       homeRecent.forEach((f, i) => {
-        const cards = (f.homeYellowCards || 0) + (f.homeRedCards || 0);
+        const cards = (f.homeYellowCards || 0) + ((f.homeRedCards || 0) * 1.5);
         const weight = 2 * (1 / (i + 1));
         totalCards += cards * weight;
         weightSum += weight;
@@ -147,7 +148,7 @@ export default function registerPredict(bot: any) {
 
       // Away recent (weight 2)
       awayRecent.forEach((f, i) => {
-        const cards = (f.awayYellowCards || 0) + (f.awayRedCards || 0);
+        const cards = (f.awayYellowCards || 0) + ((f.awayRedCards || 0) * 1.5);
         const weight = 2 * (1 / (i + 1));
         totalCards += cards * weight;
         weightSum += weight;
@@ -168,14 +169,51 @@ export default function registerPredict(bot: any) {
       const pUnder45 = pUnder35 + poissonProb(expectedCards, 4);
       const pOver45 = 1 - pUnder45;
 
-      // Build improved prediction text
-      let predictionText = `🟨 Expected cards: ${expectedCards.toFixed(1)}\n\n`;
+      // Build improved prediction text with transparency
+      let predictionText = `📊 Basis of prediction:\n`;
+
+      // 1. H2H average
+      const h2hCount = h2hFixtures.length;
+      let h2hAvg = '—';
+      if (h2hCount > 0) {
+        const h2hTotal = h2hFixtures.reduce((sum, f) => 
+          sum + (f.homeYellowCards||0) + (f.awayYellowCards||0) + 
+                ((f.homeRedCards||0) * 1.5) + ((f.awayRedCards||0) * 1.5), 0);
+        h2hAvg = (h2hTotal / h2hCount).toFixed(1);
+      }
+
+      predictionText += `• H2H last ${h2hCount || '—'}: ${h2hAvg} cards avg ${
+        h2hCount < 4 ? '(small sample ⚠️)' : ''
+      }\n`;
+
+      // 2. Home team recent home
+      const homeCount = homeRecent.length;
+      let homeAvg = '—';
+      if (homeCount > 0) {
+        const homeTotal = homeRecent.reduce((sum, f) => 
+          sum + (f.homeYellowCards||0) + ((f.homeRedCards||0) * 1.5), 0);
+        homeAvg = (homeTotal / homeCount).toFixed(1);
+      }
+      predictionText += `• ${home} last ${homeCount || '—'} home: ${homeAvg} cards avg\n`;
+
+      // 3. Away team recent away
+      const awayCount = awayRecent.length;
+      let awayAvg = '—';
+      if (awayCount > 0) {
+        const awayTotal = awayRecent.reduce((sum, f) => 
+          sum + (f.awayYellowCards||0) + ((f.awayRedCards||0) * 1.5), 0);
+        awayAvg = (awayTotal / awayCount).toFixed(1);
+      }
+      predictionText += `• ${away} last ${awayCount || '—'} away: ${awayAvg} cards avg\n\n`;
+
+      predictionText += `🟨 Expected cards: ${expectedCards.toFixed(1)}\n\n`;
+
       predictionText += `💡 Recommended bets\n`;
       predictionText += `• Under 4.5 — ${(pUnder45 * 100).toFixed(0)}% ${
-        pUnder45 > 0.70 ? '🔥 Strong' : pUnder45 > 0.55 ? '❄️ Lean' : '👀'
+        pUnder45 > 0.70 ? '🔥 Most likely' : pUnder45 > 0.55 ? '❄️ Lean' : '👀'
       }\n`;
       predictionText += `• Over 2.5 — ${(pOver25 * 100).toFixed(0)}% ${
-        pOver25 > 0.70 ? '🔥 Strong' : pOver25 > 0.55 ? '📈 Lean' : '👀'
+        pOver25 > 0.70 ? '🔥 Safe bet' : pOver25 > 0.55 ? '📈 Lean' : '👀'
       }\n`;
       predictionText += `• Under 3.5 — ${(pUnder35 * 100).toFixed(0)}% ${
         pUnder35 > 0.60 ? '❄️' : ''
