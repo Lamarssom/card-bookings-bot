@@ -213,8 +213,10 @@ export default function registerPredict(bot: any) {
       const homeCount = homeRecent.length;
       let homeAvg = '—';
       if (homeCount > 0) {
+        // Home recent display average — total cards in match
         const homeTotal = homeRecent.reduce((sum, f) => 
-          sum + (f.homeYellowCards||0) + ((f.homeRedCards||0)*1.5), 0);
+          sum + (f.homeYellowCards||0) + (f.awayYellowCards||0) + 
+                ((f.homeRedCards||0)*1.5) + ((f.awayRedCards||0)*1.5), 0);
         homeAvg = (homeTotal / homeCount).toFixed(1);
       }
       predictionText += `• ${home} last ${homeCount || '—'} home: ${homeAvg} cards avg\n`;
@@ -223,7 +225,8 @@ export default function registerPredict(bot: any) {
       let awayAvg = '—';
       if (awayCount > 0) {
         const awayTotal = awayRecent.reduce((sum, f) => 
-          sum + (f.awayYellowCards||0) + ((f.awayRedCards||0)*1.5), 0);
+          sum + (f.homeYellowCards||0) + (f.awayYellowCards||0) + 
+                ((f.homeRedCards||0)*1.5) + ((f.awayRedCards||0)*1.5), 0);
         awayAvg = (awayTotal / awayCount).toFixed(1);
       }
       predictionText += `• ${away} last ${awayCount || '—'} away: ${awayAvg} cards avg\n\n`;
