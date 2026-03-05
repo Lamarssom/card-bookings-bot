@@ -134,14 +134,16 @@ export default function registerPredict(bot: any) {
       });
 
       homeRecent.forEach((f, i) => {
-        const cards = (f.homeYellowCards || 0) + ((f.homeRedCards || 0) * 1.5);
+        const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) + 
+              ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
         const weight = 2 * (1 / (i + 1));
         totalCards += cards * weight;
         weightSum += weight;
       });
 
       awayRecent.forEach((f, i) => {
-        const cards = (f.awayYellowCards || 0) + ((f.awayRedCards || 0) * 1.5);
+        const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) + 
+              ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
         const weight = 2 * (1 / (i + 1));
         totalCards += cards * weight;
         weightSum += weight;
@@ -229,8 +231,8 @@ export default function registerPredict(bot: any) {
       predictionText += `🟨 Expected cards: ${finalExpected.toFixed(1)}\n\n`;
 
       predictionText += `💡 Recommended bets\n`;
-      predictionText += `• Under 4.5 — ${(pUnder45 * 100).toFixed(0)}% ${pUnder45 > 0.70 ? '🔥 Most likely' : pUnder45 > 0.55 ? '❄️ Lean' : '👀'}\n`;
-      predictionText += `• Over 2.5 — ${(pOver25 * 100).toFixed(0)}% ${pOver25 > 0.70 ? '🔥 Safe bet' : pOver25 > 0.55 ? '📈 Lean' : '👀'}\n`;
+      predictionText += `• Under 4.5 — ${(pUnder45 * 100).toFixed(0)}% ${pUnder45 > 0.70 ? '🔥 Likely' : pUnder45 > 0.55 ? '❄️ Lean' : '👀'}\n`;
+      predictionText += `• Over 2.5 — ${(pOver25 * 100).toFixed(0)}% ${pOver25 > 0.70 ? '🔥' : pOver25 > 0.55 ? '📈 Lean' : '👀 Safe bet'}\n`;
       predictionText += `• Under 3.5 — ${(pUnder35 * 100).toFixed(0)}% ${pUnder35 > 0.60 ? '❄️' : ''}\n`;
       predictionText += `• Over 3.5 — ${(pOver35 * 100).toFixed(0)}% ${pOver35 > 0.60 ? '⚠️ Risky' : ''}`;
 
