@@ -94,7 +94,7 @@ export default function registerPredict(bot: any) {
       const safeDisplay = escapeMarkdownV2(displayName);
       console.log('Escaped date for MD:', safeDate);
 
-      // ── ADVANCED PREDICTION ENGINE ──
+      // ── ADVANCED PREDICTION ENGINE (with fixes & debug) ──
       const fiveYearsAgo = new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000);
 
       const h2hFixtures = await prisma.fixture.findMany({
@@ -125,53 +125,69 @@ export default function registerPredict(bot: any) {
       let totalCards = 0;
       let weightSum = 0;
 
+      // H2H (lower weight so recent form dominates more)
       h2hFixtures.forEach((f, i) => {
         const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) +
                       ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
-        const weight = 3 * (1 / (i + 1));
+        const weight = 1.5 * (1 / (i + 1));  // reduced from 3
         totalCards += cards * weight;
         weightSum += weight;
       });
 
+      // Recent form (higher weight)
       homeRecent.forEach((f, i) => {
-        const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) + 
-              ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
-        const weight = 2 * (1 / (i + 1));
+        const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) +
+                      ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
+        const weight = 3.0 * (1 / (i + 1));  // increased from 2
         totalCards += cards * weight;
         weightSum += weight;
       });
 
       awayRecent.forEach((f, i) => {
-        const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) + 
-              ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
-        const weight = 2 * (1 / (i + 1));
+        const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) +
+                      ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
+        const weight = 3.0 * (1 / (i + 1));
         totalCards += cards * weight;
         weightSum += weight;
       });
 
       let baseExpected = weightSum > 0 ? totalCards / weightSum : 4.0;
+      baseExpected = Math.max(baseExpected, 2.8);
+      console.log(`Base expected before modifiers: ${baseExpected.toFixed(2)}`);
 
       // ── Apply modifiers ──
       let finalExpected = baseExpected;
 
       // Referee (only if known)
       if (nextFixtureDb?.referee) {
+        console.log(`Referee found: ${nextFixtureDb.referee}`);
         const refStats = await prisma.refereeStats.findUnique({
           where: { referee: nextFixtureDb.referee.trim() }
         });
         if (refStats && refStats.avgTotalCards > 0) {
-          finalExpected *= (refStats.avgTotalCards / 3.8);
+          const refMod = refStats.avgTotalCards / 3.8;
+          finalExpected *= refMod;
+          console.log(`Referee modifier: ${refMod.toFixed(2)}`);
+        } else {
+          console.log('No referee stats found');
         }
+      } else {
+        console.log('No referee assigned → skipping ref bias');
       }
 
       // Team aggression (always)
-      const homeAgg = await prisma.teamAggression.findUnique({ where: { team: home.trim() } });
+      /*const homeAgg = await prisma.teamAggression.findUnique({ where: { team: home.trim() } });
       const awayAgg = await prisma.teamAggression.findUnique({ where: { team: away.trim() } });
       if (homeAgg && awayAgg) {
-        finalExpected *= (homeAgg.aggressionIndex + awayAgg.aggressionIndex) / 2;
-      }
+        const aggAvg = (homeAgg.aggressionIndex + awayAgg.aggressionIndex) / 2;
+        const aggMod = Math.pow(aggAvg, 1.5); // stronger curve
+        finalExpected *= aggMod;
+        console.log(`Aggression modifier: ${aggMod.toFixed(2)} (home: ${homeAgg.aggressionIndex.toFixed(2)}, away: ${awayAgg.aggressionIndex.toFixed(2)})`);
+      } else {
+        console.log('Missing aggression stats for one or both teams');
+      }*/
 
-      // Derby intensity (optional)
+      // Derby intensity
       const derby = await prisma.derbyIntensity.findFirst({
         where: {
           OR: [
@@ -180,12 +196,16 @@ export default function registerPredict(bot: any) {
           ]
         }
       });
-      if (derby) finalExpected *= derby.intensity;
+      if (derby) {
+        finalExpected *= derby.intensity;
+        console.log(`Derby intensity applied: ${derby.intensity}`);
+      }
 
       // League baseline normalization
-      finalExpected *= 4.1 / 3.8; // current season vs historical avg
+      finalExpected *= 4.1 / 3.8;
+      console.log(`Final expected after all modifiers: ${finalExpected.toFixed(2)}`);
 
-      // Poisson using finalExpected
+      // Poisson probabilities using finalExpected
       const lambda = finalExpected;
       const poissonProb = (l: number, k: number) => (Math.pow(l, k) * Math.exp(-l)) / factorial(k);
       const factorial = (n: number): number => (n <= 1 ? 1 : n * factorial(n - 1));
@@ -197,7 +217,7 @@ export default function registerPredict(bot: any) {
       const pUnder45 = pUnder35 + poissonProb(lambda, 4);
       const pOver45 = 1 - pUnder45;
 
-      // Build text using finalExpected
+      // Build text
       let predictionText = `📊 Basis of prediction:\n`;
 
       const h2hCount = h2hFixtures.length;
@@ -213,7 +233,6 @@ export default function registerPredict(bot: any) {
       const homeCount = homeRecent.length;
       let homeAvg = '—';
       if (homeCount > 0) {
-        // Home recent display average — total cards in match
         const homeTotal = homeRecent.reduce((sum, f) => 
           sum + (f.homeYellowCards||0) + (f.awayYellowCards||0) + 
                 ((f.homeRedCards||0)*1.5) + ((f.awayRedCards||0)*1.5), 0);
