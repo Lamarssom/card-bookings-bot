@@ -152,7 +152,7 @@ export default function registerPredict(bot: any) {
       });
 
       let baseExpected = weightSum > 0 ? totalCards / weightSum : 4.0;
-      baseExpected = Math.max(baseExpected, 2.8);
+      //baseExpected = Math.max(baseExpected, 2.8);
       console.log(`Base expected before modifiers: ${baseExpected.toFixed(2)}`);
 
       // ── Apply modifiers ──
@@ -202,8 +202,8 @@ export default function registerPredict(bot: any) {
       }
 
       // League baseline normalization
-      finalExpected *= 4.1 / 3.8;
-      console.log(`Final expected after all modifiers: ${finalExpected.toFixed(2)}`);
+      //finalExpected *= 4.1 / 3.8;
+      //console.log(`Final expected after all modifiers: ${finalExpected.toFixed(2)}`);
 
       // Poisson probabilities using finalExpected
       const lambda = finalExpected;
