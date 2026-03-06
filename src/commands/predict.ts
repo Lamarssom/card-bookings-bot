@@ -94,7 +94,7 @@ export default function registerPredict(bot: any) {
       const safeDisplay = escapeMarkdownV2(displayName);
       console.log('Escaped date for MD:', safeDate);
 
-      // ── ADVANCED PREDICTION ENGINE (with fixes & debug) ──
+      // ── ADVANCED PREDICTION ENGINE (fixed scoping + balanced weights) ──
       const fiveYearsAgo = new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000);
 
       const h2hFixtures = await prisma.fixture.findMany({
@@ -107,7 +107,7 @@ export default function registerPredict(bot: any) {
           leagueName: 'Premier League',
         },
         orderBy: { date: 'desc' },
-        take: 12,
+        take: 15,
       });
 
       const homeRecent = await prisma.fixture.findMany({
@@ -122,23 +122,24 @@ export default function registerPredict(bot: any) {
         take: 10,
       });
 
+      // Declare totals here so they're visible for the whole block
       let totalCards = 0;
       let weightSum = 0;
 
-      // H2H (lower weight so recent form dominates more)
+      // H2H – stronger influence for historical context
       h2hFixtures.forEach((f, i) => {
         const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) +
                       ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
-        const weight = 1.5 * (1 / (i + 1));  // reduced from 3
+        const weight = 2.5 * (1 / (i + 1));  // balanced – H2H matters more than before
         totalCards += cards * weight;
         weightSum += weight;
       });
 
-      // Recent form (higher weight)
+      // Recent form – still important but not overpowering
       homeRecent.forEach((f, i) => {
         const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) +
                       ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
-        const weight = 3.0 * (1 / (i + 1));  // increased from 2
+        const weight = 2.5 * (1 / (i + 1));
         totalCards += cards * weight;
         weightSum += weight;
       });
@@ -146,16 +147,14 @@ export default function registerPredict(bot: any) {
       awayRecent.forEach((f, i) => {
         const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) +
                       ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
-        const weight = 3.0 * (1 / (i + 1));
+        const weight = 2.5 * (1 / (i + 1));
         totalCards += cards * weight;
         weightSum += weight;
       });
 
       let baseExpected = weightSum > 0 ? totalCards / weightSum : 4.0;
-      //baseExpected = Math.max(baseExpected, 2.8);
       console.log(`Base expected before modifiers: ${baseExpected.toFixed(2)}`);
 
-      // ── Apply modifiers ──
       let finalExpected = baseExpected;
 
       // Referee (only if known)
@@ -168,26 +167,12 @@ export default function registerPredict(bot: any) {
           const refMod = refStats.avgTotalCards / 3.8;
           finalExpected *= refMod;
           console.log(`Referee modifier: ${refMod.toFixed(2)}`);
-        } else {
-          console.log('No referee stats found');
         }
       } else {
         console.log('No referee assigned → skipping ref bias');
       }
 
-      // Team aggression (always)
-      /*const homeAgg = await prisma.teamAggression.findUnique({ where: { team: home.trim() } });
-      const awayAgg = await prisma.teamAggression.findUnique({ where: { team: away.trim() } });
-      if (homeAgg && awayAgg) {
-        const aggAvg = (homeAgg.aggressionIndex + awayAgg.aggressionIndex) / 2;
-        const aggMod = Math.pow(aggAvg, 1.5); // stronger curve
-        finalExpected *= aggMod;
-        console.log(`Aggression modifier: ${aggMod.toFixed(2)} (home: ${homeAgg.aggressionIndex.toFixed(2)}, away: ${awayAgg.aggressionIndex.toFixed(2)})`);
-      } else {
-        console.log('Missing aggression stats for one or both teams');
-      }*/
-
-      // Derby intensity
+      // Derby (if defined)
       const derby = await prisma.derbyIntensity.findFirst({
         where: {
           OR: [
@@ -201,15 +186,14 @@ export default function registerPredict(bot: any) {
         console.log(`Derby intensity applied: ${derby.intensity}`);
       }
 
-      // League baseline normalization
-      //finalExpected *= 4.1 / 3.8;
-      //console.log(`Final expected after all modifiers: ${finalExpected.toFixed(2)}`);
+      // Soft global uplift (tune this instead of hard baseline)
+      finalExpected *= 1.12;  // +12% to push toward real PL averages (~3.8–4.5)
+      console.log(`Final expected after uplift: ${finalExpected.toFixed(2)}`);
 
-      // Poisson probabilities using finalExpected
+      // Poisson using finalExpected
       const lambda = finalExpected;
       const poissonProb = (l: number, k: number) => (Math.pow(l, k) * Math.exp(-l)) / factorial(k);
       const factorial = (n: number): number => (n <= 1 ? 1 : n * factorial(n - 1));
-
       const pUnder25 = poissonProb(lambda, 0) + poissonProb(lambda, 1) + poissonProb(lambda, 2);
       const pOver25 = 1 - pUnder25;
       const pUnder35 = pUnder25 + poissonProb(lambda, 3);
@@ -217,7 +201,7 @@ export default function registerPredict(bot: any) {
       const pUnder45 = pUnder35 + poissonProb(lambda, 4);
       const pOver45 = 1 - pUnder45;
 
-      // Build text
+      // Build text using finalExpected
       let predictionText = `📊 Basis of prediction:\n`;
 
       const h2hCount = h2hFixtures.length;
@@ -254,7 +238,7 @@ export default function registerPredict(bot: any) {
 
       predictionText += `💡 Recommended bets\n`;
       predictionText += `• Under 4.5 — ${(pUnder45 * 100).toFixed(0)}% ${pUnder45 > 0.70 ? '🔥 Likely' : pUnder45 > 0.55 ? '❄️ Lean' : '👀'}\n`;
-      predictionText += `• Over 2.5 — ${(pOver25 * 100).toFixed(0)}% ${pOver25 > 0.70 ? '🔥' : pOver25 > 0.55 ? '📈 Lean' : '👀 Safe bet'}\n`;
+      predictionText += `• Over 2.5 — ${(pOver25 * 100).toFixed(0)}% ${pOver25 > 0.70 ? '🔥 Strong' : pOver25 > 0.55 ? '📈 Lean' : '👀 Safe bet'}\n`;
       predictionText += `• Under 3.5 — ${(pUnder35 * 100).toFixed(0)}% ${pUnder35 > 0.60 ? '❄️' : ''}\n`;
       predictionText += `• Over 3.5 — ${(pOver35 * 100).toFixed(0)}% ${pOver35 > 0.60 ? '⚠️ Risky' : ''}`;
 
