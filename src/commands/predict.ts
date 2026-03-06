@@ -130,7 +130,7 @@ export default function registerPredict(bot: any) {
       h2hFixtures.forEach((f, i) => {
         const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) +
                       ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
-        const weight = 2.5 * (1 / (i + 1));  // balanced – H2H matters more than before
+        const weight = 3.0 * (1 / (i + 1));  // balanced – H2H matters more than before
         totalCards += cards * weight;
         weightSum += weight;
       });
@@ -139,7 +139,7 @@ export default function registerPredict(bot: any) {
       homeRecent.forEach((f, i) => {
         const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) +
                       ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
-        const weight = 2.5 * (1 / (i + 1));
+        const weight = 3.0 * (1 / (i + 1));
         totalCards += cards * weight;
         weightSum += weight;
       });
@@ -147,7 +147,7 @@ export default function registerPredict(bot: any) {
       awayRecent.forEach((f, i) => {
         const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) +
                       ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
-        const weight = 2.5 * (1 / (i + 1));
+        const weight = 3.0 * (1 / (i + 1));
         totalCards += cards * weight;
         weightSum += weight;
       });
@@ -187,7 +187,7 @@ export default function registerPredict(bot: any) {
       }
 
       // Soft global uplift (tune this instead of hard baseline)
-      finalExpected *= 1.12;  // +12% to push toward real PL averages (~3.8–4.5)
+      finalExpected *= 1.18;
       console.log(`Final expected after uplift: ${finalExpected.toFixed(2)}`);
 
       // Poisson using finalExpected
