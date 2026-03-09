@@ -1,7 +1,7 @@
 import { Context } from 'telegraf';
 import { escapeMarkdownV2 } from '../utils';
 import { prisma } from '../db';
-import { Fixture } from '@prisma/client';
+import { Fixture, League } from '@prisma/client';
 import path from 'path';
 
 // Normalization (shared logic)
@@ -55,7 +55,7 @@ export default function registerPredict(bot: any) {
           take: 1,
         });
 
-        let detectedLeague: string | undefined;
+        let detectedLeague: League | undefined;
         if (teamRecentFixtures.length > 0) {
           detectedLeague = teamRecentFixtures[0].league;
           console.log(`Detected league for ${normalizedDisplay}: ${detectedLeague}`);
@@ -69,7 +69,7 @@ export default function registerPredict(bot: any) {
               { awayTeam: { equals: normalizedDisplay, mode: 'insensitive' } },
             ],
             date: { gt: now },
-            ...(detectedLeague ? { league: detectedLeague } : {}), // only filter by league if we know it
+            ...(detectedLeague ? { league: detectedLeague } : {}),
           },
           orderBy: { date: 'asc' },
         });
@@ -82,9 +82,6 @@ export default function registerPredict(bot: any) {
         }
       }
 
-      const targetLeague = nextFixtureDb?.league;
-
-      // ── If still no fixture (API + DB both failed) ──
       if (!fixtureDate) {
         await ctx.reply(
           `No upcoming fixture found for "${displayName}" (tried API & DB).\n` +
@@ -93,7 +90,18 @@ export default function registerPredict(bot: any) {
         return;
       }
 
-      // Determine which team is "ours"
+      const targetLeague = nextFixtureDb!.league;
+
+      const leagueNames: Record<League, string> = {
+        EPL: 'Premier League',
+        BUNDESLIGA: 'Bundesliga',
+        SERIE_A: 'Serie A',
+        LALIGA: 'La Liga',
+        LIGUE_1: 'Ligue 1',
+      };
+
+      const leagueDisplay = leagueNames[targetLeague] || targetLeague;
+
       const ourTeamRaw = home.toLowerCase().includes(normalizedDisplay.toLowerCase()) ? home : away;
       const ourTeam = ourTeamRaw;
       const opponent = home === ourTeam ? away : home;
@@ -280,7 +288,7 @@ export default function registerPredict(bot: any) {
       const reply = 
         `🎯 *Card Booking Prediction* — ${safeDisplay}\n\n` +
         `🏟 ${safeOurTeam} vs ${safeOpponent}\n` +
-        `📅 Premier League • ${safeDate}\n\n` +
+        `📅 ${leagueDisplay} • ${safeDate}\n\n` +
         `${safePrediction}\n\n` +
         `📊 \\(${safeFooter}\\)`;
 
