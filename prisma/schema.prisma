@@ -14,7 +14,7 @@ enum CardType {
 enum League {
   EPL
   BUNDESLIGA
-  SERIE A
+  SERIE_A
   LALIGA
   LIGUE_1
 }
@@ -39,7 +39,7 @@ model Fixture {
   homeRedCards    Int?     @default(0)
   awayRedCards    Int?     @default(0)
 
-  @@unique([homeTeam, awayTeam, date])
+  @@unique([league, homeTeam, awayTeam, date])
 }
 
 model Card {

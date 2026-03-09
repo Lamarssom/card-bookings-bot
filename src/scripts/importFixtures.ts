@@ -13,16 +13,21 @@ function normalizeTeamName(name: string): string {
   return teamNameMap[trimmed] || trimmed;
 }
 
+// Map filename prefix → Prisma League enum value
+const LEAGUE_FROM_FILENAME: Record<string, string> = {
+  'merged-Epl': 'EPL',
+  'merged-Bundesliga': 'BUNDESLIGA',
+  'merged-SerieA': 'SERIE_A',
+  'merged-LaLiga': 'LALIGA',
+  'merged-Ligue1': 'LIGUE_1',
+};
+
 async function importAllFixtures() {
   await prisma.$connect();
   console.log('Connected to PostgreSQL');
 
-  // Clear Old Data
-  await prisma.fixture.deleteMany({ where: { leagueName: 'Premier League' } });
-  console.log('Cleared existing Premier League fixtures');
-
   const fixturesDir = path.join(__dirname, '../data/fixtures');
-  const files = fs.readdirSync(fixturesDir).filter(f => f.endsWith('.csv'));
+  const files = fs.readdirSync(fixturesDir).filter(f => f.startsWith('merged-') && f.endsWith('.csv'));
 
   let totalImported = 0;
   let totalSkipped = 0;
@@ -30,8 +35,16 @@ async function importAllFixtures() {
 
   for (const file of files) {
     console.log(`\nProcessing ${file}...`);
-    const filePath = path.join(fixturesDir, file);
 
+    // Detect league from filename
+    const leaguePrefix = Object.keys(LEAGUE_FROM_FILENAME).find(prefix => file.includes(prefix));
+    if (!leaguePrefix) {
+      console.warn(`Skipping ${file} - no league mapping found`);
+      continue;
+    }
+    const leagueEnum = LEAGUE_FROM_FILENAME[leaguePrefix];
+
+    const filePath = path.join(fixturesDir, file);
     const results: any[] = [];
 
     await new Promise<void>((resolve, reject) => {
@@ -46,17 +59,37 @@ async function importAllFixtures() {
             return;
           }
 
-          // Build date-time string correctly with space if time exists
-          let dateTimeStr = dateStr;
-          if (timeStr) {
-            dateTimeStr +=  ` ${timeStr}`;
+          const datePart = (row.Date || '').trim();
+          const timePart = (row.Time || '').trim();
+
+          // Handle cases where time is accidentally glued to date
+          let cleanDateTime = datePart;
+          if (timePart) {
+            // If date already ends with time-like string, don't add again
+            if (!/\d{2}:\d{2}$/.test(datePart)) {
+              cleanDateTime += ' ' + timePart;
+            }
+          } else if (datePart.includes(' ')) {
+            // Already has space → use as is
+            cleanDateTime = datePart;
           }
 
-          const format = timeStr ? 'dd/MM/yyyy HH:mm' : 'dd/MM/yyyy';
+          // Try multiple possible formats
+          let parsedLocal: Date | null = null;
 
-          const parsedLocal = parse(dateTimeStr, format, new Date());
-          if (isNaN(parsedLocal.getTime())) {
-            console.warn(`Parse failed: "${dateTimeStr}" (format: ${format}) in ${file}`);
+          const possibleFormats = [
+            'dd/MM/yyyy HH:mm',
+            'dd/MM/yyyyHH:mm',     // no space
+            'dd/MM/yyyy',
+          ];
+
+          for (const fmt of possibleFormats) {
+            parsedLocal = parse(cleanDateTime, fmt, new Date());
+            if (!isNaN(parsedLocal.getTime())) break;
+          }
+
+          if (!parsedLocal || isNaN(parsedLocal.getTime())) {
+            console.warn(`Parse failed: "${cleanDateTime}" (original Date="${datePart}", Time="${timePart}") in ${file}`);
             totalSkipped++;
             return;
           }
@@ -68,17 +101,15 @@ async function importAllFixtures() {
           const homeR = parseInt(row.HR || '0', 10);
           const awayR = parseInt(row.AR || '0', 10);
 
-          if (homeY > 0 || awayY > 0 || homeR > 0 || awayR > 0) {
-            totalWithCards++;
-          }
+          if (homeY || awayY || homeR || awayR) totalWithCards++;
 
           results.push({
+            league: leagueEnum,
+            div: row.Div || null,
             homeTeam: normalizeTeamName(row.HomeTeam),
             awayTeam: normalizeTeamName(row.AwayTeam),
             date: parsedUTC,
-            leagueName: 'Premier League',
-            round: row.Round || row['Round Number'] || '',
-
+            referee: row.Referee?.trim() || null,
             homeYellowCards: homeY,
             awayYellowCards: awayY,
             homeRedCards: homeR,
@@ -89,53 +120,45 @@ async function importAllFixtures() {
         .on('error', reject);
     });
 
-    if (results.length > 0) {
-      const BATCH_SIZE = 100;
-      let upsertedCount = 0;
+    if (results.length === 0) continue;
 
-      for (let i = 0; i < results.length; i += BATCH_SIZE) {
-        const batch = results.slice(i, i + BATCH_SIZE);
-        console.log(`  Upserting batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} records)...`);
+    const BATCH_SIZE = 200;
+    let upsertedCount = 0;
 
-        const batchPromises = batch.map(async (fix) => {
-          try {
-            await prisma.fixture.upsert({
-              where: {
-                homeTeam_awayTeam_date: {
-                  homeTeam: fix.homeTeam,
-                  awayTeam: fix.awayTeam,
-                  date: fix.date,
-                },
-              },
-              update: fix,
-              create: fix,
-            });
-            return true;
-          } catch (err) {
-            console.error(`Upsert failed for ${fix.homeTeam} vs ${fix.awayTeam} on ${fix.date.toISOString()}:`, err);
-            return false;
-          }
-        });
+    for (let i = 0; i < results.length; i += BATCH_SIZE) {
+      const batch = results.slice(i, i + BATCH_SIZE);
+      console.log(`  Upserting batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} records)...`);
 
-        const settled = await Promise.allSettled(batchPromises);
-        const successful = settled.filter(r => r.status === 'fulfilled' && r.value === true).length;
-        upsertedCount += successful;
-      }
+      const promises = batch.map(fix =>
+        prisma.fixture.upsert({
+          where: {
+            league_homeTeam_awayTeam_date: {
+              league: fix.league,
+              homeTeam: fix.homeTeam,
+              awayTeam: fix.awayTeam,
+              date: fix.date,
+            },
+          },
+          update: fix,
+          create: fix,
+        }).catch(err => {
+          console.error(`Upsert failed for ${fix.homeTeam} vs ${fix.awayTeam}:`, err.message);
+          return null;
+        })
+      );
 
-      totalImported += upsertedCount;
-      console.log(`Bulk upsert: upserted/updated ≈ ${upsertedCount} records`);
+      await Promise.all(promises);
+      upsertedCount += batch.length; // optimistic count; adjust if needed
     }
-
-    console.log(
-      `Processed ${file}: ${results.length} parsed, ${totalSkipped} skipped this file, total imported so far: ${totalImported}`
-    );
+    totalImported += upsertedCount;
+    console.log(`→ ${upsertedCount} records processed for ${leagueEnum}`);
   }
 
-  console.log(`\n=== FINAL SUMMARY ===`);
+  console.log(`\n=== SUMMARY ===`);
   console.log(`Total fixtures imported/updated: ${totalImported}`);
-  console.log(`Total rows skipped across all files: ${totalSkipped}`);
-  console.log(`Fixtures with card data detected: ${totalWithCards}`);
-  console.log('Disconnected from PostgreSQL');
+  console.log(`Total rows skipped: ${totalSkipped}`);
+  console.log(`Fixtures with card data: ${totalWithCards}`);
+  console.log('Done.');
   process.exit(0);
 }
 

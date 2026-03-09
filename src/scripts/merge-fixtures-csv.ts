@@ -76,24 +76,51 @@ async function mergeLeague(leagueKey: string, historicalPath: string, futureUTCP
     });
   }).on('end', res).on('error', rej));
 
-  // 3. Combine + normalize historical too
-  const merged = [
-    ...historical.map(row => ({
+  // Use a Map to deduplicate by unique key: home-away-date
+  const fixtureMap = new Map<string, any>();
+
+  // Helper to create key
+  const getKey = (row: any) => 
+    `${normalizeTeam(row.HomeTeam || row['Home Team'])}|${normalizeTeam(row.AwayTeam || row['Away Team'])}|${row.Date.trim()}`;
+
+  // First add historical (has stats → higher priority)
+  historical.forEach(row => {
+    const key = getKey(row);
+    fixtureMap.set(key, {
       ...row,
       HomeTeam: normalizeTeam(row.HomeTeam || row['Home Team'] || ''),
       AwayTeam: normalizeTeam(row.AwayTeam || row['Away Team'] || ''),
-      Div: row.Div || (leagueKey === 'EPL' ? 'E0' : 'D1') // etc.
-    })),
-    ...future
-  ];
+      Div: row.Div || getDivFromLeague(leagueKey), 
+    });
+  });
+
+  // Then add future only if not already present
+  future.forEach(row => {
+    const key = getKey(row);
+    if (!fixtureMap.has(key)) {
+      fixtureMap.set(key, row);
+    }
+  });
+
+  const merged = Array.from(fixtureMap.values());
+
 
   // Sort by date/time
-  merged.sort((a, b) => {
+    merged.sort((a, b) => {
     const da = a.Date.split('/').reverse().join('');
     const db = b.Date.split('/').reverse().join('');
     if (da !== db) return da.localeCompare(db);
     return (a.Time || '00:00').localeCompare(b.Time || '00:00');
   });
+
+  // Helper function
+  function getDivFromLeague(key: string): string {
+    if (key === 'EPL') return 'E0';
+    if (key === 'Serie A') return 'I1';
+    if (key === 'LaLiga') return 'SP1';
+    if (key === 'Ligue 1') return 'F1';
+    return 'D1';
+  }
 
   await csvWriter(path.join(ROOT, `src/data/fixtures/${outputName}`)).writeRecords(merged);
   console.log(`✅ Done: ${merged.length} rows → ${outputName}`);
