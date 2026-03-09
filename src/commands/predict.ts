@@ -39,17 +39,37 @@ export default function registerPredict(bot: any) {
       let away = '';
       let fixtureDate: Date | null = null;
 
-      // ── Step 2: If API failed, fall back to DB search (old behavior) ──
+      // ── Step 2: DB fallback – find the NEXT fixture for this team (any league) ──
       let nextFixtureDb: Fixture | null = null;
       if (!fixtureDate) {
+        // First: find the most recent fixture of this team to detect which league it's currently in
+        const teamRecentFixtures = await prisma.fixture.findMany({
+          where: {
+            OR: [
+              { homeTeam: { equals: normalizedDisplay, mode: 'insensitive' } },
+              { awayTeam: { equals: normalizedDisplay, mode: 'insensitive' } },
+            ],
+            date: { gt: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000) }, // last ~4 months
+          },
+          orderBy: { date: 'desc' },
+          take: 1,
+        });
+
+        let detectedLeague: string | undefined;
+        if (teamRecentFixtures.length > 0) {
+          detectedLeague = teamRecentFixtures[0].league;
+          console.log(`Detected league for ${normalizedDisplay}: ${detectedLeague}`);
+        }
+
+        // Now find the actual NEXT upcoming fixture (preferring the detected league if known)
         nextFixtureDb = await prisma.fixture.findFirst({
           where: {
             OR: [
-              { homeTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
-              { awayTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
+              { homeTeam: { equals: normalizedDisplay, mode: 'insensitive' } },
+              { awayTeam: { equals: normalizedDisplay, mode: 'insensitive' } },
             ],
             date: { gt: now },
-            leagueName: 'Premier League',
+            ...(detectedLeague ? { league: detectedLeague } : {}), // only filter by league if we know it
           },
           orderBy: { date: 'asc' },
         });
@@ -58,9 +78,11 @@ export default function registerPredict(bot: any) {
           home = nextFixtureDb.homeTeam;
           away = nextFixtureDb.awayTeam;
           fixtureDate = nextFixtureDb.date;
-          console.log(`DB fallback → Next fixture: ${home} vs ${away} on ${fixtureDate.toISOString()}`);
+          console.log(`DB → Next: ${home} vs ${away} (${nextFixtureDb.league}) on ${fixtureDate?.toISOString()}`);
         }
       }
+
+      const targetLeague = nextFixtureDb?.league;
 
       // ── If still no fixture (API + DB both failed) ──
       if (!fixtureDate) {
@@ -104,20 +126,28 @@ export default function registerPredict(bot: any) {
             { homeTeam: { contains: away, mode: 'insensitive' }, awayTeam: { contains: home, mode: 'insensitive' } },
           ],
           date: { gte: fiveYearsAgo, lt: fixtureDate },
-          leagueName: 'Premier League',
+          league: targetLeague,   // ← use the league from the fixture we found
         },
         orderBy: { date: 'desc' },
         take: 15,
       });
 
       const homeRecent = await prisma.fixture.findMany({
-        where: { homeTeam: { contains: home, mode: 'insensitive' }, date: { gte: fiveYearsAgo }, leagueName: 'Premier League' },
+        where: {
+          homeTeam: { equals: home, mode: 'insensitive' },
+          date: { gte: fiveYearsAgo },
+          league: targetLeague,
+        },
         orderBy: { date: 'desc' },
         take: 10,
       });
 
       const awayRecent = await prisma.fixture.findMany({
-        where: { awayTeam: { contains: away, mode: 'insensitive' }, date: { gte: fiveYearsAgo }, leagueName: 'Premier League' },
+        where: {
+          awayTeam: { equals: away, mode: 'insensitive' },
+          date: { gte: fiveYearsAgo },
+          league: targetLeague,
+        },
         orderBy: { date: 'desc' },
         take: 10,
       });
