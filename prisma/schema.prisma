@@ -11,8 +11,18 @@ enum CardType {
   RED_CARD
 }
 
+enum League {
+  EPL
+  BUNDESLIGA
+  SERIE A
+  LALIGA
+  LIGUE_1
+}
+
 model Fixture {
   id         Int      @id @default(autoincrement())
+  league     League
+  div        String?
   homeTeam   String
   awayTeam   String
   date       DateTime

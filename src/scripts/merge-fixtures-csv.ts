@@ -4,14 +4,7 @@ import csv from 'csv-parser';
 import { createObjectCsvWriter } from 'csv-writer';
 
 const ROOT = process.cwd();
-
-const INPUT_PAST_CSV = path.join(ROOT, 'src/data/fixtures/Epl-2025-2026.csv');
-const INPUT_FIXTURES_CSV = path.join(ROOT, 'src/data/fixtures/epl-2025-GMTStandardTime.csv');
-const OUTPUT_PATH = path.join(ROOT, 'src/data/fixtures/merged-Epl-2025-2026.csv');
-
-// Use current time when script runs (WAT = UTC+1)
-// You can adjust the offset if your server time zone is different
-const CURRENT_DATETIME = new Date(Date.now() + 60 * 60 * 1000); // +1 hour rough WAT adjustment
+const NORMALIZATION = JSON.parse(fs.readFileSync(path.join(ROOT, 'src/data/team-normalization.json'), 'utf8'));
 
 const HEADER = [
   { id: 'Div', title: 'Div' },
@@ -40,134 +33,78 @@ const HEADER = [
   { id: 'AR', title: 'AR' },
 ];
 
-const csvWriter = createObjectCsvWriter({
-  path: OUTPUT_PATH,
-  header: HEADER,
-});
+const csvWriter = (outputPath: string) => createObjectCsvWriter({ path: outputPath, header: HEADER });
 
-// Simple team name normalizer
-const normalizeTeamName = (name: string): string => {
+const normalizeTeam = (name: string): string => {
   if (!name) return '';
   let n = name.trim();
-
-  // Common variations
-  if (n === 'Man United' || n === 'Man Utd' || n === 'Manchester United') return 'Man United';
-  if (n === 'Tottenham' || n === 'Spurs' || n === 'Tottenham Hotspur') return 'Tottenham';
-  if (n.includes("Nott'm Forest") || n === 'Nottingham Forest') return "Nott'm Forest";
-  if (n === 'Brighton' || n === 'Brighton & Hove Albion') return 'Brighton';
-  if (n === 'Wolves' || n === 'Wolverhampton Wanderers') return 'Wolves';
-
-  return n;
+  // Apply map (flat lookup)
+  return NORMALIZATION[n] || n;
 };
 
-function parseFixtureDateTime(dateStr: string): Date | null {
+function parseUTCDateTime(dateStr: string): { date: string; time: string } {
   const [datePart, timePart] = dateStr.trim().split(/\s+/);
-  if (!datePart || !timePart) return null;
-
-  const [day, month, year] = datePart.split('/');
-  const [hour, minute] = timePart.split(':');
-
-  if (!year || !month || !day || !hour || !minute) return null;
-
-  // WAT = UTC+1
-  return new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hour.padStart(2, '0')}:${minute.padStart(2, '0')}:00+01:00`);
+  return { date: datePart || '', time: timePart || '' };
 }
 
-async function run() {
-  console.log('Starting CSV merge...');
-  console.log(`Using current time: ${CURRENT_DATETIME.toISOString()} (local)`);
+async function mergeLeague(leagueKey: string, historicalPath: string, futureUTCPath: string, outputName: string) {
+  console.log(`\n=== Merging ${leagueKey} ===`);
 
-  // 1. Read past matches
-  const pastRows: any[] = [];
-  await new Promise<void>((resolve, reject) => {
-    fs.createReadStream(INPUT_PAST_CSV)
-      .pipe(csv())
-      .on('data', (row) => pastRows.push(row))
-      .on('end', resolve)
-      .on('error', reject);
-  });
+  // 1. Read historical (has cards for past matches)
+  const historical: any[] = [];
+  await new Promise((res, rej) => fs.createReadStream(historicalPath).pipe(csv()).on('data', r => historical.push(r)).on('end', res).on('error', rej));
 
-  // Fix missing Div for past matches
-  pastRows.forEach(row => {
-    if (!row.Div || row.Div.trim() === '') {
-      row.Div = 'E0';
-    }
-  });
+  // 2. Read future UTC fixtures
+  const future: any[] = [];
+  await new Promise((res, rej) => fs.createReadStream(futureUTCPath).pipe(csv()).on('data', row => {
+    if (!row['Home Team'] || !row['Away Team']) return;
+    const dt = parseUTCDateTime(row.Date);
+    future.push({
+      Div: leagueKey === 'EPL' ? 'E0' : leagueKey === 'Serie A' ? 'I1' : leagueKey === 'LaLiga' ? 'SP1' : leagueKey === 'Ligue 1' ? 'F1' : 'D1',
+      Date: dt.date,
+      Time: dt.time,
+      HomeTeam: normalizeTeam(row['Home Team']),
+      AwayTeam: normalizeTeam(row['Away Team']),
+      FTHG: '',
+      FTAG: '',
+      FTR: '',
+      HTHG: '',
+      HTAG: '',
+      HTR: '',
+      Referee: '',
+      HS: '', AS: '', HST: '', AST: '', HF: '', AF: '', HC: '', AC: '', HY: '', AY: '', HR: '', AR: ''
+    });
+  }).on('end', res).on('error', rej));
 
-  console.log(`Loaded ${pastRows.length} past match rows`);
-
-  // 2. Read & process future fixtures
-  const futureRows: any[] = [];
-  await new Promise<void>((resolve, reject) => {
-    fs.createReadStream(INPUT_FIXTURES_CSV)
-      .pipe(csv())
-      .on('data', (row) => {
-        const fullDate = row.Date?.trim() || '';
-        const dt = parseFixtureDateTime(fullDate);
-
-        if (!dt) return;
-
-        // Only future matches with no result
-        if (dt > CURRENT_DATETIME && !row.Result?.trim()) {
-          futureRows.push({
-            Div: 'E0',
-            Date: fullDate.slice(0, 10),
-            Time: fullDate.slice(11) || '',
-            HomeTeam: normalizeTeamName(row['Home Team'] || ''),
-            AwayTeam: normalizeTeamName(row['Away Team'] || ''),
-          });
-        }
-      })
-      .on('end', resolve)
-      .on('error', reject);
-  });
-
-  console.log(`Found ${futureRows.length} future fixtures`);
-
-  // 3. Combine and normalize
+  // 3. Combine + normalize historical too
   const merged = [
-    ...pastRows.map(row => ({
-      ...HEADER.reduce((acc, col) => ({
-        ...acc,
-        [col.id]: row[col.id] || '',
-      }), {} as any),
-      HomeTeam: normalizeTeamName(row.HomeTeam || row['Home Team'] || ''),
-      AwayTeam: normalizeTeamName(row.AwayTeam || row['Away Team'] || ''),
+    ...historical.map(row => ({
+      ...row,
+      HomeTeam: normalizeTeam(row.HomeTeam || row['Home Team'] || ''),
+      AwayTeam: normalizeTeam(row.AwayTeam || row['Away Team'] || ''),
+      Div: row.Div || (leagueKey === 'EPL' ? 'E0' : 'D1') // etc.
     })),
-    ...futureRows.map(f => ({
-      ...HEADER.reduce((acc, col) => ({
-        ...acc,
-        [col.id]: f[col.id] || '',
-      }), {} as any),
-    })),
+    ...future
   ];
 
-  // 4. Sort by date then time
+  // Sort by date/time
   merged.sort((a, b) => {
-    const parseDate = (d: string) => {
-      if (!d) return new Date(0);
-      const [dd, mm, yyyy] = d.split('/').map(Number);
-      return new Date(yyyy, mm - 1, dd);
-    };
-
-    const dateA = parseDate(a.Date);
-    const dateB = parseDate(b.Date);
-
-    if (dateA < dateB) return -1;
-    if (dateA > dateB) return 1;
-
-    const timeA = a.Time || '00:00';
-    const timeB = b.Time || '00:00';
-    return timeA.localeCompare(timeB);
+    const da = a.Date.split('/').reverse().join('');
+    const db = b.Date.split('/').reverse().join('');
+    if (da !== db) return da.localeCompare(db);
+    return (a.Time || '00:00').localeCompare(b.Time || '00:00');
   });
 
-  // 5. Write merged file
-  await csvWriter.writeRecords(merged);
-  console.log(`Done! Merged file written to:\n${OUTPUT_PATH}`);
-  console.log(`Total rows: ${merged.length}`);
+  await csvWriter(path.join(ROOT, `src/data/fixtures/${outputName}`)).writeRecords(merged);
+  console.log(`✅ Done: ${merged.length} rows → ${outputName}`);
 }
 
-run().catch(err => {
-  console.error('Merge failed:', err);
-  process.exit(1);
-});
+async function runAll() {
+  await mergeLeague('Serie A', 'src/data/fixtures/Serie-A-2025-2026.csv', 'src/data/fixtures/serie-a-2025-UTC.csv', 'merged-SerieA-2025-2026.csv');
+  await mergeLeague('LaLiga', 'src/data/fixtures/Laliga-2025-2026.csv', 'src/data/fixtures/la-liga-2025-UTC.csv', 'merged-LaLiga-2025-2026.csv');
+  await mergeLeague('Ligue 1', 'src/data/fixtures/Ligue-1-2025-2026.csv', 'src/data/fixtures/ligue-1-2025-UTC.csv', 'merged-Ligue1-2025-2026.csv');
+  await mergeLeague('Bundesliga', 'src/data/fixtures/Bundesliga-2025-2026.csv', 'src/data/fixtures/bundesliga-2025-UTC.csv', 'merged-Bundesliga-2025-2026.csv'); // add your UTC file
+  // EPL already done
+}
+
+runAll();
