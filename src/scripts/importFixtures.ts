@@ -29,6 +29,12 @@ async function importAllFixtures() {
   const fixturesDir = path.join(__dirname, '../data/fixtures');
   const files = fs.readdirSync(fixturesDir).filter(f => f.startsWith('merged-') && f.endsWith('.csv'));
 
+  console.log('Fixtures directory:', fixturesDir);
+  console.log('Detected CSV files:', files);
+  if (files.length === 0) {
+    console.warn('No merged-*.csv files found! Check path:', fixturesDir);
+  }
+
   let totalImported = 0;
   let totalSkipped = 0;
   let totalWithCards = 0;
