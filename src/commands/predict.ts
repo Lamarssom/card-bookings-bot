@@ -42,37 +42,37 @@ export default function registerPredict(bot: any) {
       // ── Step 2: DB fallback – find the NEXT fixture for this team (any league) ──
       let nextFixtureDb: Fixture | null = null;
       if (!fixtureDate) {
-        // First: find the most recent fixture of this team to detect which league it's currently in
-        const teamRecentFixtures = await prisma.fixture.findMany({
-          where: {
-            OR: [
-              { homeTeam: { equals: normalizedDisplay, mode: 'insensitive' } },
-              { awayTeam: { equals: normalizedDisplay, mode: 'insensitive' } },
-            ],
-            date: { gt: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000) }, // last ~4 months
-          },
-          orderBy: { date: 'desc' },
-          take: 1,
-        });
+        // First: detect league from most recent fixture
+      const teamRecentFixtures = await prisma.fixture.findMany({
+        where: {
+          OR: [
+            { homeTeam: normalizedDisplay },
+            { awayTeam: normalizedDisplay },
+          ],
+          date: { gt: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000) }, // last ~4 months
+        },
+        orderBy: { date: 'desc' },
+        take: 1,
+      });
 
-        let detectedLeague: League | undefined;
-        if (teamRecentFixtures.length > 0) {
-          detectedLeague = teamRecentFixtures[0].league;
-          console.log(`Detected league for ${normalizedDisplay}: ${detectedLeague}`);
-        }
+      let detectedLeague: League | undefined;
+      if (teamRecentFixtures.length > 0) {
+        detectedLeague = teamRecentFixtures[0].league;
+        console.log(`Detected league for ${normalizedDisplay}: ${detectedLeague}`);
+      }
 
-        // Now find the actual NEXT upcoming fixture (preferring the detected league if known)
-        nextFixtureDb = await prisma.fixture.findFirst({
-          where: {
-            OR: [
-              { homeTeam: { equals: normalizedDisplay, mode: 'insensitive' } },
-              { awayTeam: { equals: normalizedDisplay, mode: 'insensitive' } },
-            ],
-            date: { gt: now },
-            ...(detectedLeague ? { league: detectedLeague } : {}),
-          },
-          orderBy: { date: 'asc' },
-        });
+      // Now find NEXT fixture
+      nextFixtureDb = await prisma.fixture.findFirst({
+        where: {
+          OR: [
+            { homeTeam: normalizedDisplay },
+            { awayTeam: normalizedDisplay },
+          ],
+          date: { gt: now },
+          ...(detectedLeague ? { league: detectedLeague } : {}),
+        },
+        orderBy: { date: 'asc' },
+      });
 
         if (nextFixtureDb) {
           home = nextFixtureDb.homeTeam;
