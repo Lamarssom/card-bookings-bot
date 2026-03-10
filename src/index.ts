@@ -88,9 +88,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 // For local dev — keep polling as fallback
 if (process.env.NODE_ENV !== 'production') {
-  bot.launch().then(() => console.log('Polling mode (local dev)'));
+  bot.launch({
+    dropPendingUpdates: true,
+  }).then(() => console.log('Polling mode (local dev)'));
 } else {
-  console.log(`Webhook mode ready — set webhook to: https://your-vercel-domain.vercel.app${webhookPath}`);
+  console.log('Webhook mode active — no polling needed');
 }
 // Global error catch
 bot.catch((err: unknown, ctx: BotContext) => {
