@@ -3,9 +3,9 @@ import { Stage } from 'telegraf/scenes';
 import dotenv from 'dotenv';
 import { connectDB } from './db';
 import { escapeMarkdownV2 } from './utils';
-import { Card } from '@prisma/client';
 import { prisma } from './db';
 import type { BotContext, BotSession } from './types';
+import { VercelRequest, VercelResponse } from '@vercel/node';
 
 // Command registrars
 import registerPredict from './commands/predict';
@@ -73,13 +73,25 @@ bot.command('debugcards', async (ctx) => {
   }
 });
 
-// Launch with timeout & logging
-bot.launch({
-  dropPendingUpdates: true,
-} as any)
-  .then(() => console.log('Bot successfully launched and polling! 🚀'))
-  .catch((err: Error) => console.error('Launch failed:', err));
+const PORT = process.env.PORT || 3000;
+const webhookPath = `/telegraf/${bot.secretPathComponent()}`; // auto-generates secure path
 
+// Export handler for Vercel
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') {
+    return res.status(404).send('Not found');
+  }
+
+  await bot.handleUpdate(req.body);
+  res.status(200).send('ok');
+}
+
+// For local dev — keep polling as fallback
+if (process.env.NODE_ENV !== 'production') {
+  bot.launch().then(() => console.log('Polling mode (local dev)'));
+} else {
+  console.log(`Webhook mode ready — set webhook to: https://your-vercel-domain.vercel.app${webhookPath}`);
+}
 // Global error catch
 bot.catch((err: unknown, ctx: BotContext) => {
   console.error('Bot error:', err);
