@@ -25,6 +25,8 @@ if (!token) {
 console.log('Token loaded successfully (censored):', token.substring(0, 10) + '...');
 
 const bot = new Telegraf<BotContext>(token);
+const webhookPath = `/telegraf/${bot.secretPathComponent()}`;
+console.log('Webhook path:', webhookPath);
 
 // Stage for scenes
 const stage = new Stage<BotContext>([teamCardsWizard]);
@@ -74,16 +76,23 @@ bot.command('debugcards', async (ctx) => {
 });
 
 const PORT = process.env.PORT || 3000;
-const webhookPath = `/telegraf/${bot.secretPathComponent()}`; // auto-generates secure path
 
-// Export handler for Vercel
+// Export for Vercel
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
-    return res.status(404).send('Not found');
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  await bot.handleUpdate(req.body);
-  res.status(200).send('ok');
+  try {
+    const update = req.body;
+
+    await bot.handleUpdate(update);
+
+    return res.status(200).json({ ok: true });
+  } catch (err: any) {
+    console.error('Webhook error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 }
 
 // For local dev — keep polling as fallback
