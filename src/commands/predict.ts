@@ -43,36 +43,36 @@ export default function registerPredict(bot: any) {
       let nextFixtureDb: Fixture | null = null;
       if (!fixtureDate) {
         // First: detect league from most recent fixture
-      const teamRecentFixtures = await prisma.fixture.findMany({
-        where: {
-          OR: [
-            { homeTeam: normalizedDisplay },
-            { awayTeam: normalizedDisplay },
-          ],
-          date: { gt: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000) }, // last ~4 months
-        },
-        orderBy: { date: 'desc' },
-        take: 1,
-      });
+        const teamRecentFixtures = await prisma.fixture.findMany({
+          where: {
+            OR: [
+              { homeTeam: normalizedDisplay },
+              { awayTeam: normalizedDisplay },
+            ],
+            date: { gt: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000) }, // last ~4 months
+          },
+          orderBy: { date: 'desc' },
+          take: 1,
+        });
 
-      let detectedLeague: League | undefined;
-      if (teamRecentFixtures.length > 0) {
-        detectedLeague = teamRecentFixtures[0].league;
-        console.log(`Detected league for ${normalizedDisplay}: ${detectedLeague}`);
-      }
+        let detectedLeague: League | undefined;
+        if (teamRecentFixtures.length > 0) {
+          detectedLeague = teamRecentFixtures[0].league;
+          console.log(`Detected league for ${normalizedDisplay}: ${detectedLeague}`);
+        }
 
-      // Now find NEXT fixture
-      nextFixtureDb = await prisma.fixture.findFirst({
-        where: {
-          OR: [
-            { homeTeam: normalizedDisplay },
-            { awayTeam: normalizedDisplay },
-          ],
-          date: { gt: now },
-          ...(detectedLeague ? { league: detectedLeague } : {}),
-        },
-        orderBy: { date: 'asc' },
-      });
+        // Now find NEXT fixture
+        nextFixtureDb = await prisma.fixture.findFirst({
+          where: {
+            OR: [
+              { homeTeam: normalizedDisplay },
+              { awayTeam: normalizedDisplay },
+            ],
+            date: { gt: now },
+            ...(detectedLeague ? { league: detectedLeague } : {}),
+          },
+          orderBy: { date: 'asc' },
+        });
 
         if (nextFixtureDb) {
           home = nextFixtureDb.homeTeam;

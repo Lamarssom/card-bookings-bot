@@ -130,8 +130,8 @@ async function runAll() {
   await mergeLeague('Serie A', 'src/data/fixtures/Serie-A-2025-2026.csv', 'src/data/fixtures/serie-a-2025-UTC.csv', 'merged-SerieA-2025-2026.csv');
   await mergeLeague('LaLiga', 'src/data/fixtures/Laliga-2025-2026.csv', 'src/data/fixtures/la-liga-2025-UTC.csv', 'merged-LaLiga-2025-2026.csv');
   await mergeLeague('Ligue 1', 'src/data/fixtures/Ligue-1-2025-2026.csv', 'src/data/fixtures/ligue-1-2025-UTC.csv', 'merged-Ligue1-2025-2026.csv');
-  await mergeLeague('Bundesliga', 'src/data/fixtures/Bundesliga-2025-2026.csv', 'src/data/fixtures/bundesliga-2025-UTC.csv', 'merged-Bundesliga-2025-2026.csv'); // add your UTC file
-  // EPL already done
+  await mergeLeague('Bundesliga', 'src/data/fixtures/Bundesliga-2025-2026.csv', 'src/data/fixtures/bundesliga-2025-UTC.csv', 'merged-Bundesliga-2025-2026.csv');
+  await mergeLeague('Premier League', 'src/data/fixtures/EPL-2025-2026.csv', 'src/data/fixtures/epl-2025-GMTStandardTime.csv', 'merged-Epl-2025-2026.csv');
 }
 
 runAll();
