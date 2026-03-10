@@ -37,13 +37,11 @@ bot.use(stage.middleware());
 bot.start((ctx) => {
   console.log('Received /start from user:', ctx.from?.username || ctx.from?.id);
   ctx.replyWithMarkdownV2(escapeMarkdownV2(
-    'Welcome to Card Bookings Bot! 👋\n\n' +
-    'I show *yellow* and *red* cards + timestamps from top 5 leagues.\n\n' +
+    'Welcome to Card Bookings Bot! 🔥\n\n' +
     'Commands:\n' +
-    '/refresh – Load historical cards\n' +
-    '/recentcards – View saved cards\n' +
-    '/teamcards – Select league & team for cards\n' +
-    'More coming...'
+    '/predict <team> — Get card prediction for next match (e.g. /predict Chelsea)\n' +
+    'Supports: Premier League, La Liga, Serie A, Bundesliga, Ligue 1\n\n' +
+    'Data is from historical matches + upcoming fixtures.'
   ));
 });
 

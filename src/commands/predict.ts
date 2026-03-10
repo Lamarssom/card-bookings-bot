@@ -297,8 +297,8 @@ export default function registerPredict(bot: any) {
       await ctx.replyWithMarkdownV2(reply);
 
     } catch (err: any) {
-      console.error('Predict error:', err);
-      await ctx.reply('Error fetching prediction. Check logs.');
+      console.error('Predict error:', err.stack || err);
+      await ctx.reply('⚠️ Something went wrong while generating prediction. Try again or contact admin.');
     }
   });
 }
