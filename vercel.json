@@ -17,10 +17,7 @@
     }
   ],
   "functions": {
-    "api/**/*.js": {
-      "includeFiles": "node_modules/.prisma/client/**"
-    },
-    "src/**/*.ts": {
+    "src/index.ts": {
       "includeFiles": "node_modules/.prisma/client/**"
     }
   }

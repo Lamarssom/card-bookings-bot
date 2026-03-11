@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "ts-node-dev src/index.ts",
     "start": "node -r ts-node/register src/index.ts",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "postinstall": "prisma generate"
   },
   "keywords": [],
