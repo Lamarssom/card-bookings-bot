@@ -10,9 +10,9 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 // Command registrars
 import registerPredict from './commands/predict';
 //import registerRefresh from './commands/refresh';
-import registerRecentCards from './commands/recentcards';
+//import registerRecentCards from './commands/recentcards';
 // import registerTestApf from './commands/testapf'; // uncomment if needed
-import teamCardsWizard from './scenes/teamcardsScene';
+//import teamCardsWizard from './scenes/teamcardsScene';
 
 dotenv.config();
 connectDB();
@@ -29,11 +29,11 @@ const webhookPath = `/telegraf/${bot.secretPathComponent()}`;
 console.log('Webhook path:', webhookPath);
 
 // Stage for scenes
-const stage = new Stage<BotContext>([teamCardsWizard]);
+/*const stage = new Stage<BotContext>([teamCardsWizard]);
 bot.use(session<BotSession, BotContext>({
   defaultSession: () => ({}) as BotSession
 }));
-bot.use(stage.middleware());
+bot.use(stage.middleware());*/
 
 // Basic commands
 bot.start((ctx) => {
@@ -52,7 +52,7 @@ bot.help((ctx) => ctx.reply('Commands: /start, /refresh, /recentcards, /teamcard
 bot.command('ping', (ctx) => ctx.reply('Pong!'));
 
 //registerRefresh(bot);
-registerRecentCards(bot);
+//registerRecentCards(bot);
 registerPredict(bot);
 // registerTestApf(bot); // keep commented unless needed
 

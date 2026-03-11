@@ -1,4 +1,4 @@
-import { Scenes, Markup } from 'telegraf';
+/*import { Scenes, Markup } from 'telegraf';
 import type { CallbackQuery } from 'telegraf/typings/core/types/typegram';
 import { Card } from '../db';
 import { escapeMarkdownV2 } from '../utils';
@@ -224,4 +224,4 @@ const TEAM_CARDS_WIZARD = new Scenes.WizardScene<BotContext>(
   }
 );
 
-export default TEAM_CARDS_WIZARD;
+export default TEAM_CARDS_WIZARD;*/

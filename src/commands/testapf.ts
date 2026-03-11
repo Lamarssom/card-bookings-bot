@@ -1,4 +1,4 @@
-import { Context } from 'telegraf';
+/*import { Context } from 'telegraf';
 import { Card } from '../db';
 import { escapeMarkdownV2 } from '../utils';
 
@@ -79,4 +79,4 @@ export default function registerTestApf(bot: any) {
             await ctx.reply(`Error: ${err.response?.data?.message || err.message || 'Unknown'}`);
         }
     });
-}
+}*/

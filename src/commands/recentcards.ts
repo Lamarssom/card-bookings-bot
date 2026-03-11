@@ -1,4 +1,4 @@
-import { Context } from 'telegraf';
+/*import { Context } from 'telegraf';
 import { Card } from '../db';
 import { escapeMarkdownV2 } from '../utils';
 
@@ -12,7 +12,7 @@ export default function registerRecentCards(bot: any) {
         }
 
         const grouped: Record<string, any[]> = {};
-        cards.forEach(c => {
+        cards.forEach((c: { match: string | number; }) => {
             if (!grouped[c.match]) grouped[c.match] = [];
             grouped[c.match].push(c);
         });
@@ -45,4 +45,4 @@ export default function registerRecentCards(bot: any) {
             await ctx.reply('Query error: ' + (err.message || 'Unkonwn'));
         }
     });
-}
+}*/
