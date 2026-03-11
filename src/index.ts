@@ -79,12 +79,15 @@ const PORT = process.env.PORT || 3000;
 
 // Export for Vercel
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  console.log('Incoming request:', req.method, req.url, 'Body keys:', Object.keys(req.body || {}));
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
     const update = req.body;
+    console.log('Received update:', JSON.stringify(update, null, 2).slice(0, 500)); // log first part
 
     await bot.handleUpdate(update);
 

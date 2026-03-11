@@ -8,7 +8,7 @@ import path from 'path';
 const teamNameMap = JSON.parse(require('fs').readFileSync(path.join(__dirname, '../data/team-normalization.json'), 'utf-8'));
 
 function normalizeTeamName(name: string): string {
-  const trimmed = name.trim();
+  const trimmed = name.trim().toLowerCase();
   return teamNameMap[trimmed] || trimmed;
 }
 
@@ -46,8 +46,8 @@ export default function registerPredict(bot: any) {
         const teamRecentFixtures = await prisma.fixture.findMany({
           where: {
             OR: [
-              { homeTeam: normalizedDisplay },
-              { awayTeam: normalizedDisplay },
+              { homeTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
+              { awayTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
             ],
             date: { gt: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000) }, // last ~4 months
           },
@@ -65,8 +65,8 @@ export default function registerPredict(bot: any) {
         nextFixtureDb = await prisma.fixture.findFirst({
           where: {
             OR: [
-              { homeTeam: normalizedDisplay },
-              { awayTeam: normalizedDisplay },
+              { homeTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
+              { awayTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
             ],
             date: { gt: now },
             ...(detectedLeague ? { league: detectedLeague } : {}),
@@ -84,8 +84,11 @@ export default function registerPredict(bot: any) {
 
       if (!fixtureDate) {
         await ctx.reply(
-          `No upcoming fixture found for "${displayName}" (tried API & DB).\n` +
-          'Try exact/short name (e.g. "Man Utd") or check if fixtures are imported correctly.'
+          `No upcoming fixture found for "${displayName}" (tried API & DB).\n\n` +
+          'Tips:\n' +
+          '- Try capitalizing: e.g. "Juventus" instead of "juventus"\n' +
+          '- Use common/short name: "Man Utd", "Man City", "Aston Villa"\n' +
+          '- Check if fixtures are up-to-date in DB.'
         );
         return;
       }
