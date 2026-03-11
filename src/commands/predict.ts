@@ -165,7 +165,7 @@ export default function registerPredict(bot: any) {
       let weightSum = 0;
 
       // H2H – stronger influence for historical context
-      h2hFixtures.forEach((f, i) => {
+      h2hFixtures.forEach((f: Fixture, i: number) => {
         const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) +
                       ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
         const weight = 3.0 * (1 / (i + 1));  // balanced – H2H matters more than before
@@ -174,7 +174,7 @@ export default function registerPredict(bot: any) {
       });
 
       // Recent form – still important but not overpowering
-      homeRecent.forEach((f, i) => {
+      homeRecent.forEach((f: Fixture, i: number) => {
         const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) +
                       ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
         const weight = 3.0 * (1 / (i + 1));
@@ -182,7 +182,7 @@ export default function registerPredict(bot: any) {
         weightSum += weight;
       });
 
-      awayRecent.forEach((f, i) => {
+      awayRecent.forEach((f: Fixture, i: number) => {
         const cards = (f.homeYellowCards || 0) + (f.awayYellowCards || 0) +
                       ((f.homeRedCards || 0) * 1.5) + ((f.awayRedCards || 0) * 1.5);
         const weight = 3.0 * (1 / (i + 1));
