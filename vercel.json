@@ -15,10 +15,5 @@
       "src": "/.*",
       "dest": "src/index.ts"
     }
-  ],
-  "functions": {
-    "src/index.ts": {
-      "includeFiles": "node_modules/.prisma/**"
-    }
-  }
+  ]
 }

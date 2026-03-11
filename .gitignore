@@ -6,3 +6,5 @@ dist/
 data/fixtures/
 *.csv
 /src/generated/prisma
+
+.vercel
