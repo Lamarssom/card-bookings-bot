@@ -87,7 +87,7 @@ export default function registerPredict(bot: any) {
           `No upcoming fixture found for "${displayName}" (tried API & DB).\n\n` +
           'Tips:\n' +
           '- Try capitalizing: e.g. "Juventus" instead of "juventus"\n' +
-          '- Use common/short name: "Man Utd", "Man City", "Aston Villa"\n' +
+          '- Use common/short name: "Man United", "Man City", "Aston Villa"\n' +
           '- Check if fixtures are up-to-date in DB.'
         );
         return;
