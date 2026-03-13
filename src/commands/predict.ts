@@ -4,13 +4,8 @@ import { prisma } from '../db';
 import { Fixture, League } from '@prisma/client';
 import path from 'path';
 
-// Normalization (shared logic) - FIXED
-const rawMap: Record<string, string> = JSON.parse(require('fs').readFileSync(path.join(__dirname, '../data/team-normalization.json'), 'utf-8'));
-
-// Make lookup case-insensitive + return the canonical DB name
-const teamNameMap: Record<string, string> = Object.fromEntries(
-  Object.entries(rawMap).map(([key, value]) => [key.toLowerCase(), value])
-);
+// Normalization (shared logic)
+const teamNameMap = JSON.parse(require('fs').readFileSync(path.join(__dirname, '../data/team-normalization.json'), 'utf-8'));
 
 function normalizeTeamName(name: string): string {
   const trimmed = name.trim().toLowerCase();
