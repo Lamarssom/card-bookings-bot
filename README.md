@@ -1,6 +1,6 @@
 # Card Bookings Bot
 
-Telegram bot that predicts yellow/red card likelihood for upcoming Premier League matches based on historical H2H data.
+Telegram bot that predicts yellow/red card likelihood for upcoming Premier League, Bundesliga, Serie A, Laliga, Ligue 1 matches based on historical H2H data.
 
 Shows:
 - Next fixture
