@@ -20,16 +20,28 @@ export default function registerPredict(bot: any) {
 
       if (!args) {
         await ctx.reply(
-          'Please provide a team name.\n\nExamples:\n/predict Manchester United\n/predict Arsenal\n/predict Man Utd'
+          'Please provide a team name.\n\nExamples:\n/predict Manchester United\n/predict Chelsea vs Arsenal\n/predict Man Utd'
         );
         return;
       }
 
-      await ctx.reply('🔍 Looking up next match and card prediction...');
+      await ctx.sendChatAction('typing');   // ← instant typing animation (UX win)
 
-      const displayName = args.trim();
+      // Support "Team vs Team" format
+      let displayName = args.trim();
+      let team2 = '';
+      if (args.toLowerCase().includes(' vs ')) {
+        const parts = args.split(/ vs /i);
+        displayName = parts[0].trim();
+        team2 = parts[1].trim();
+      } else if (args.toLowerCase().includes(' v ')) {
+        const parts = args.split(/ v /i);
+        displayName = parts[0].trim();
+        team2 = parts[1].trim();
+      }
+
       const normalizedDisplay = normalizeTeamName(displayName);
-      console.log(`Normalized user input: "${normalizedDisplay}" from "${displayName}"`);
+      console.log(`Normalized: "${normalizedDisplay}" ${team2 ? `(vs ${team2})` : ''}`);
 
       const now = new Date();
 
@@ -39,10 +51,23 @@ export default function registerPredict(bot: any) {
       let away = '';
       let fixtureDate: Date | null = null;
 
-      // ── Step 2: DB fallback – find the NEXT fixture for this team (any league) ──
+      // ── Step 2: DB fallback – support single team OR "Team vs Team" ──
       let nextFixtureDb: Fixture | null = null;
-      if (!fixtureDate) {
-        // First: detect league from most recent fixture
+
+      if (team2) {
+        const normalizedTeam2 = normalizeTeamName(team2);
+        nextFixtureDb = await prisma.fixture.findFirst({
+          where: {
+            OR: [
+              { homeTeam: { contains: normalizedDisplay, mode: 'insensitive' }, awayTeam: { contains: normalizedTeam2, mode: 'insensitive' } },
+              { homeTeam: { contains: normalizedTeam2, mode: 'insensitive' }, awayTeam: { contains: normalizedDisplay, mode: 'insensitive' } },
+            ],
+            date: { gt: now },
+          },
+          orderBy: { date: 'asc' },
+        });
+      } else {
+        // original single-team logic
         const teamRecentFixtures = await prisma.fixture.findMany({
           where: {
             OR: [
@@ -61,7 +86,6 @@ export default function registerPredict(bot: any) {
           console.log(`Detected league for ${normalizedDisplay}: ${detectedLeague}`);
         }
 
-        // Now find NEXT fixture
         nextFixtureDb = await prisma.fixture.findFirst({
           where: {
             OR: [
@@ -73,13 +97,13 @@ export default function registerPredict(bot: any) {
           },
           orderBy: { date: 'asc' },
         });
+      }
 
-        if (nextFixtureDb) {
-          home = nextFixtureDb.homeTeam;
-          away = nextFixtureDb.awayTeam;
-          fixtureDate = nextFixtureDb.date;
-          console.log(`DB → Next: ${home} vs ${away} (${nextFixtureDb.league}) on ${fixtureDate?.toISOString()}`);
-        }
+      if (nextFixtureDb) {
+        home = nextFixtureDb.homeTeam;
+        away = nextFixtureDb.awayTeam;
+        fixtureDate = nextFixtureDb.date;
+        console.log(`DB → Next: ${home} vs ${away} (${nextFixtureDb.league}) on ${fixtureDate?.toISOString()}`);
       }
 
       if (!fixtureDate) {
@@ -319,8 +343,11 @@ export default function registerPredict(bot: any) {
         `${safePrediction}\n\n` +
         `📊 \\(${safeFooter}\\)`;
 
-      console.log('Sending MarkdownV2:\n' + reply);
-      await ctx.replyWithMarkdownV2(reply);
+      await ctx.replyWithMarkdownV2(reply, {
+        reply_markup: {
+          inline_keyboard: [[{ text: '🔄 Refresh Prediction', callback_data: `refresh_${nextFixtureDb?.id ?? 'unkown'}` }]]
+        }
+      });
 
     } catch (err: any) {
       console.error('Predict error:', err.stack || err);
